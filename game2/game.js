@@ -39,8 +39,9 @@ const MATCH_TIME = SOLO60 ? 60 : 45;   // seconds of swatting
 const COUNT_IN = 3.2;            // the 3–2–1 before it
 const SWAT_HALF = 6.5;           // half the width of the head: everything under that square is caught at once
 const SWAT_FLEX = 0.8;           // how far below the mesh a fly can still be and be caught
-const ALARM_R = 26;              // a swing is noticed this far off
-const ALARM_HOLD = 0.9;          // and they stay turned towards it for this long
+const ALARM_R = 46;              // a swing is noticed right across the field
+const ALARM_NEAR = 18;           // this close they stop dead as well as turn
+const ALARM_HOLD = 1.5;          // and they stay facing it for this long
 const SWAT_FALL = 0.17;          // seconds from the raised hand to the impact
 const SWAT_COOL = 0.5;           // and this long before that player can swing again
 const PIN_T = 0.34;              // it is held down and struggling for this long before anything is decided
@@ -307,13 +308,16 @@ class Fly {
     const avoid = this.avoid;
     if (this.crowded && base > 0) base *= 0.4;
     const dna02 = clamp((this.drive.DNa02R - this.drive.DNa02L) * 0.006, -0.5, 0.5);
-    // something came down nearby: pull up short and swing round to face it
+    // something came down out there: swing round to face it, and if it was close, stop dead too
     let look = 0;
-    if (world.t - (this.alarmT ?? -9) < ALARM_HOLD) {
-      look = clamp(wrap(Math.atan2(this.alarmY - this.y, this.alarmX - this.x) - this.yaw), -1, 1) * 0.85;
-      base *= 0.45;
+    const at = this.alarmT ?? -9, alarmed = world.t >= at && world.t - at < ALARM_HOLD;
+    if (alarmed) {
+      look = clamp(wrap(Math.atan2(this.alarmY - this.y, this.alarmX - this.x) - this.yaw) * (this.alarmGain ?? 1.7), -1.5, 1.5);
+      base = this.alarmNear ? Math.max(base * 0.25, 0.5) : Math.max(base * 0.7, 0.45);
+      this.pauseT = 0;                                 // a fly frozen mid-pause still turns its head round
     }
-    const turn = clamp(this.om + pull + back + avoid + dna02 + look, -0.9, 0.9);
+    const lim = alarmed ? 1.6 : 0.8;                   // past 1 the inner legs back up and it pivots on the spot
+    const turn = clamp(this.om + pull + back + avoid + dna02 + look, -lim, lim);
     this.dL = base * (1 + turn); this.dR = base * (1 - turn);
     if (this.state === 'land') { this.dL = this.dR = 0; if (this.stateT > 0.35) this.setState('walk'); }
     this.cpg.step(dt, this.dL, this.dR);
@@ -1075,8 +1079,12 @@ function swat(x, y, by, quiet) {
     if (f.airborne || f.leaving || f.state === 'held' || f.hurt) continue;
     const d = Math.hypot(f.x - x, f.y - y);
     if (d > ALARM_R) continue;
-    f.alarmT = world.t; f.alarmX = x; f.alarmY = y;
-    if (d < 15 && !f.startle && Math.random() < 0.22) {
+    const near = d < ALARM_NEAR;
+    // the ones further off catch the movement a moment later, and turn at their own pace
+    f.alarmT = world.t + (near ? 0 : rnd(0.04, 0.05 + d * 0.008));
+    f.alarmX = x; f.alarmY = y; f.alarmNear = near;
+    f.alarmGain = near ? 1.7 : rnd(0.5, 1.1);
+    if (near && !f.startle && Math.random() < 0.3) {
       f.startle = { at: world.t + rnd(0.02, 0.1), dir: Math.atan2(f.y - y, f.x - x) + rnd(-0.5, 0.5) };
     }
   }
@@ -1155,6 +1163,13 @@ function impactSwat(s) {
       d.slipped++; slipAway(f, s); continue;
     }
     pinDown(f, s);
+  }
+  // everything close by that was not caught gets out of there
+  for (const f of flies) {
+    if (f.airborne || f.leaving || f.hurt || f.startle || f.state === 'held') continue;
+    const d = Math.hypot(f.x - s.x, f.y - s.y);
+    if (d > 17 || Math.random() > 0.55 - d * 0.022) continue;
+    f.startle = { at: world.t + rnd(0, 0.06), dir: Math.atan2(f.y - s.y, f.x - s.x) + rnd(-0.5, 0.5) };
   }
   if (s.pinned.length) sfxSquash(Math.min(3, s.pinned.length));
 }
