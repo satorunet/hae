@@ -41,7 +41,9 @@ const SWAT_HALF = 6.5;           // half the width of the head: everything under
 const SWAT_FLEX = 0.8;           // how far below the mesh a fly can still be and be caught
 const ALARM_R = 46;              // a swing is noticed right across the field
 const ALARM_NEAR = 18;           // this close they stop dead as well as turn
-const ALARM_HOLD = 1.5;          // and they stay facing it for this long
+const ALARM_LOOK = 1.3;          // they stop and watch the spot for this long — long enough to come
+                                 // right about from facing away, at ALARM_TURN. That is all it is.
+const ALARM_TURN = 2.8;          // rad/s they can whip round at, over what the legs alone manage
 const SWAT_FALL = 0.17;          // seconds from the raised hand to the impact
 const SWAT_COOL = 0.5;           // and this long before that player can swing again
 const PIN_T = 0.34;              // it is held down and struggling for this long before anything is decided
@@ -278,6 +280,15 @@ class Fly {
 
   groundStep(dt) {
     if (this.hurt) return this.hurtStep(dt);
+    // The escape is a reflex and does not wait for the next decision tick twenty milliseconds away:
+    // it is checked here, every two. A real fly is off the ground about five milliseconds after it
+    // sees the thing coming, which is most of why they are so hard to hit.
+    if (this.startle && world.t >= this.startle.at) {
+      const dir = this.startle.dir;
+      this.startle = null;
+      this.takeoff('escape', dir, 'rule');
+      if (this.airborne) return;
+    }
     let base = 0;
     if (this.state === 'walk') {
       if (this.pauseT > 0) this.pauseT -= dt; else if (Math.random() < dt / 5) this.pauseT = rnd(0.4, 2.2);
@@ -308,17 +319,17 @@ class Fly {
     const avoid = this.avoid;
     if (this.crowded && base > 0) base *= 0.4;
     const dna02 = clamp((this.drive.DNa02R - this.drive.DNa02L) * 0.006, -0.5, 0.5);
-    // something came down out there: swing round to face it, and if it was close, stop dead too
-    let look = 0;
-    const at = this.alarmT ?? -9, alarmed = world.t >= at && world.t - at < ALARM_HOLD;
-    if (alarmed) {
-      look = clamp(wrap(Math.atan2(this.alarmY - this.y, this.alarmX - this.x) - this.yaw) * (this.alarmGain ?? 1.7), -1.5, 1.5);
-      base = this.alarmNear ? Math.max(base * 0.25, 0.5) : Math.max(base * 0.7, 0.45);
-      this.pauseT = 0;                                 // a fly frozen mid-pause still turns its head round
-    }
-    const lim = alarmed ? 1.6 : 0.8;                   // past 1 the inner legs back up and it pivots on the spot
-    const turn = clamp(this.om + pull + back + avoid + dna02 + look, -lim, lim);
+    const at = this.alarmT ?? -9, alarmed = world.t >= at && world.t - at < ALARM_LOOK;
+    if (alarmed) { base = 0; this.pauseT = 0; }        // it stops where it is; the dropping can wait
+    const turn = clamp(this.om + pull + back + avoid + dna02, -0.8, 0.8);
     this.dL = base * (1 + turn); this.dR = base * (1 - turn);
+    if (alarmed) {
+      // Wary, not curious: it turns to keep an eye on where that came down and goes nowhere while it
+      // does. base*(1±turn) can never give the two sides opposite signs, so a pivot is set directly.
+      const e = wrap(Math.atan2(this.alarmY - this.y, this.alarmX - this.x) - this.yaw);
+      const q = clamp(e * 2.5, -1, 1) * 0.6 * (this.alarmGain ?? 1);
+      this.dL = -q; this.dR = q;
+    }
     if (this.state === 'land') { this.dL = this.dR = 0; if (this.stateT > 0.35) this.setState('walk'); }
     this.cpg.step(dt, this.dL, this.dR);
     const m = this.cpg.mag, sL = (m[0] + m[1] + m[2]) / 3 * Math.sign(this.cpg.freq[0]), sR = (m[3] + m[4] + m[5]) / 3 * Math.sign(this.cpg.freq[3]);
@@ -326,6 +337,12 @@ class Fly {
     let vx = v.vx * this.s;
     if (this.state === 'land' && this.flight) vx += this.flight.u * Math.exp(-this.stateT / 0.03);
     this.x += (c * vx - s * v.vy * this.s) * dt; this.y += (s * vx + c * v.vy * this.s) * dt; this.yaw = wrap(this.yaw + v.wz * dt);
+    if (alarmed) {
+      // shuffling legs alone take a second and a half to come about, far too slow to read as a
+      // reaction — a real fly snaps round to look. This is on top of what the legs are doing.
+      const e = wrap(Math.atan2(this.alarmY - this.y, this.alarmX - this.x) - this.yaw);
+      this.yaw = wrap(this.yaw + clamp(e * 4, -1, 1) * ALARM_TURN * dt);
+    }
     this.speed = Math.abs(vx);
   }
 
@@ -661,7 +678,7 @@ function crowd(dt) {
     for (const o of flies) {
       if (o === f || !o.airborne || !o.flight || !o.flight.launched) continue;
       const d = Math.hypot(o.x - f.x, o.y - f.y, o.z - f.z);
-      if (d < 3.5 && Math.random() < dt * 3) f.startle = { at: world.t + rnd(0.005, 0.05), dir: Math.atan2(f.y - o.y, f.x - o.x) };
+      if (d < 3.5 && Math.random() < dt * 3) f.startle = { at: world.t + rnd(0.004, 0.03), dir: Math.atan2(f.y - o.y, f.x - o.x) };
     }
   }
   // a hand coming down is a looming stimulus: the ones that spot it in time get away
@@ -673,7 +690,7 @@ function crowd(dt) {
       const closing = s.vz * dz / d;                                       // mm/s toward the fly
       // this is rolled every 8 ms of the fall, so the rate has to stay low or nothing is ever caught
       const rate = (d < 20 && closing > 25 ? 1.4 : 0) + (d < 11 ? 1.0 : 0);
-      if (rate && Math.random() < dt * rate) f.startle = { at: world.t + rnd(0.0, 0.04), dir: Math.atan2(dy, dx) + rnd(-0.5, 0.5) };
+      if (rate && Math.random() < dt * rate) f.startle = { at: world.t + rnd(0.0, 0.02), dir: Math.atan2(dy, dx) + rnd(-0.5, 0.5) };
     }
   }
 }
@@ -1083,9 +1100,11 @@ function swat(x, y, by, quiet) {
     // the ones further off catch the movement a moment later, and turn at their own pace
     f.alarmT = world.t + (near ? 0 : rnd(0.04, 0.05 + d * 0.008));
     f.alarmX = x; f.alarmY = y; f.alarmNear = near;
-    f.alarmGain = near ? 1.7 : rnd(0.5, 1.1);
-    if (near && !f.startle && Math.random() < 0.3) {
-      f.startle = { at: world.t + rnd(0.02, 0.1), dir: Math.atan2(f.y - y, f.x - x) + rnd(-0.5, 0.5) };
+    f.alarmGain = near ? 1.15 : rnd(0.55, 1.0);
+    // only a few bolt before the mesh has even started down — otherwise aiming stops mattering,
+    // since the looming response and the scatter on impact already give them two ways out
+    if (near && !f.startle && Math.random() < 0.12) {
+      f.startle = { at: world.t + rnd(0.004, 0.028), dir: Math.atan2(f.y - y, f.x - x) + rnd(-0.5, 0.5) };
     }
   }
   const pl = restPlane(x, y, rot);
@@ -1169,7 +1188,7 @@ function impactSwat(s) {
     if (f.airborne || f.leaving || f.hurt || f.startle || f.state === 'held') continue;
     const d = Math.hypot(f.x - s.x, f.y - s.y);
     if (d > 17 || Math.random() > 0.55 - d * 0.022) continue;
-    f.startle = { at: world.t + rnd(0, 0.06), dir: Math.atan2(f.y - s.y, f.x - s.x) + rnd(-0.5, 0.5) };
+    f.startle = { at: world.t + rnd(0, 0.025), dir: Math.atan2(f.y - s.y, f.x - s.x) + rnd(-0.5, 0.5) };
   }
   if (s.pinned.length) sfxSquash(Math.min(3, s.pinned.length));
 }
