@@ -219,6 +219,7 @@ export class FlyBrain {
    * @param {number} [o.tauTrace=40]  presynaptic trace time constant, ms
    * @param {number} [o.tauDopa=80]   dopamine time constant, ms
    * @param {number} [o.gainMin=0]    floor on a synapse's gain
+   * @param {number} [o.gainMax=1]    ceiling (reached only with negative dopamine)
    * @param {number} [o.tauForget=0]  gains drift back to 1 with this time constant, ms (0 = never)
    * @param {number} [o.everyMs=1]    how often the rule is applied
    */
@@ -254,16 +255,51 @@ export class FlyBrain {
 
   /** Retune the learning rule without rebuilding it. */
   setPlasticityParams({ eta = 0.02, tauTrace = 40, tauDopa = 80, gainMin = 0,
-                        tauForget = 0, everyMs = 1 } = {}) {
+                        gainMax = 1, tauForget = 0, everyMs = 1 } = {}) {
     const dt = this.params.dt, every = Math.max(1, Math.round(everyMs / dt));
     this._x.fb_plastic_params(eta, Math.exp(-dt / tauTrace), Math.exp(-every * dt / tauDopa),
       gainMin, tauForget > 0 ? 1 - Math.exp(-every * dt / tauForget) : 0, every);
+    this._x.fb_plastic_gmax(gainMax);
+  }
+
+  /**
+   * Every plastic synapse's gain as one Float32Array - a learned brain that
+   * `importGains` can put back into any brain set up with the same
+   * `setPlasticity` call.
+   */
+  exportGains() {
+    const x = this._x, n = x.fb_plastic_size();
+    const p = this._gainBuf(n);
+    x.fb_plastic_copy(p, 0);
+    return new Float32Array(x.memory.buffer, p, n).slice();
+  }
+
+  /** Load gains saved by `exportGains` (same wiring and the same setPlasticity call). */
+  importGains(gains) {
+    const x = this._x, n = x.fb_plastic_size();
+    if (gains.length !== n) throw new Error(`flybrain: ${gains.length} gains for ${n} plastic synapses`);
+    const p = this._gainBuf(n);
+    new Float32Array(x.memory.buffer, p, n).set(gains);
+    x.fb_plastic_copy(p, 1);
+  }
+
+  _gainBuf(n) {
+    if (!this._gb || this._gb.n < n) {
+      const p = this._x.fb_alloc(4 * n);
+      if (!p) throw new Error('flybrain: out of memory');
+      this._gb = { p, n };
+    }
+    return this._gb.p;
   }
 
   /** Forget: every learned gain back to 1. */
   forget() { this._x.fb_plastic_forget(); }
 
-  /** Set a group's dopamine level directly (the modulator cells add to it). */
+  /**
+   * Set a group's dopamine level directly (the modulator cells add to it).
+   * A negative level strengthens the synapses of recently active cells instead
+   * of weakening them, up to `gainMax`.
+   */
   dopamine(group, level) { this._x.fb_dopa_set(group, level); }
 
   /** Mean gain of a group's plastic synapses - 1 is naive, 0 is fully depressed. */
@@ -297,6 +333,28 @@ export class FlyBrain {
     const n = new Uint32Array(x.memory.buffer, x.fb_ptr_probe_n(), g);
     const out = new Float64Array(g);
     for (let c = 0; c < g; c++) out[c] = n[c] ? sum[c] / n[c] : 1;
+    return out;
+  }
+
+  /**
+   * What each group's cells receive from `pre` given how often each of them
+   * fired: sum over synapses of spikes x synapse count x gain, divided by the
+   * same sum with every gain at 1. 1 = as a naive brain would hear it, lower =
+   * learned away, higher = strengthened. `spikes` is indexed like `pre`
+   * (model indices).
+   */
+  driveByGroup(pre, spikes) {
+    const x = this._x;
+    if (x.fb_gain_probe_reset() !== 0) throw new Error('flybrain: out of memory');
+    for (let k = 0; k < pre.length; k++)
+      if (spikes[k] && x.fb_drive_probe_add(pre[k], spikes[k]) !== 0) throw new Error('flybrain: out of memory');
+    const g = this._plastic ? this._plastic.groups.length : 0;
+    const out = new Float64Array(g).fill(1);
+    const p = x.fb_ptr_probe_w();
+    if (!p) return out;
+    const sum = new Float64Array(x.memory.buffer, x.fb_ptr_probe_sum(), g);
+    const w = new Float64Array(x.memory.buffer, p, g);
+    for (let c = 0; c < g; c++) if (w[c] > 0) out[c] = sum[c] / w[c];
     return out;
   }
 

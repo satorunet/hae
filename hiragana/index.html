@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>数字を読む蠅 — サーバで練習し続けるキノコ体</title>
-<meta name="description" content="蠅の脳のキノコ体に 1〜9 の手書き数字を読ませる。サーバで休まず練習し、正答率を記録し続けている。">
-<meta property="og:title" content="数字を読む蠅">
-<meta property="og:description" content="FlyWire のキノコ体が、サーバで休まず手書き数字を練習している。正答率の記録。">
+<title>ひらがなを読む蠅 — サーバで休まず練習するキノコ体</title>
+<meta name="description" content="蠅の脳のキノコ体に、ひらがな 46 文字を一段ずつ覚えさせる。サーバで休まず練習し、見たことのないフォントで合格すると次の段に進む。">
+<meta property="og:title" content="ひらがなを読む蠅">
+<meta property="og:description" content="FlyWire のキノコ体が、サーバで休まずひらがなを練習している。いまのレベルと正答率の記録。">
 <meta property="og:type" content="website">
 <style>
   :root{
@@ -44,7 +44,7 @@
   #lv{font-size:2.1rem;font-weight:700;line-height:1}
   #lvsub{font-size:.82rem;color:var(--dim)}
   #grid{display:flex;flex-direction:column;gap:4px;margin:6px 0 4px}
-  .grow{display:grid;grid-template-columns:repeat(9,1fr);gap:4px}
+  .grow{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
   .gl{position:relative;text-align:center;border-radius:6px;padding:3px 0 1px;font-size:1.05rem;
     border:1px solid #2b3642;color:#f1f5f9;min-width:0}
   .gl small{display:block;font-size:.6rem;color:#cfe3f5;line-height:1.1;min-height:.7rem;font-variant-numeric:tabular-nums}
@@ -108,14 +108,14 @@
 </head>
 <body>
 
-<h1>数字を読む蠅</h1>
+<h1>ひらがなを読む蠅</h1>
 <div class="panel">
   <h2><span>出題 → このページの蠅が答える</span></h2>
   <canvas id="fly"></canvas>
   <div class="quizrow">
     <div class="qbox">
-      <div class="qdraw"><canvas id="q" width="12" height="12"></canvas><canvas id="qpad" width="264" height="264" title="ここに字を書くと蠅が読む"></canvas></div>
-      <div class="qlab">問題 <b id="qtruth">–</b><span id="qsrc" hidden></span></div>
+      <div class="qdraw"><canvas id="q" width="16" height="16"></canvas><canvas id="qpad" width="264" height="264" title="ここに字を書くと蠅が読む"></canvas></div>
+      <div class="qlab">問題 <b id="qtruth">–</b><br><span id="qsrc"></span></div>
       <div class="qhint">✍ この枠にも書ける</div>
     </div>
     <div class="verdict" id="verdict">–</div>
@@ -135,10 +135,8 @@
   </div>
   <p id="status">脳を読み込んでいます…（30 MB ほど）</p>
   <p class="note" id="brainnote"></p>
-  <p class="note" id="flynote">問題は MNIST のテストセット（練習には使わない 9,020 枚）から。
-  蠅が前脚で旗を立てて答え、少し振ってから下ろす。<b>正解なら餌（砂糖水の粒）が落ちてきて、歩いて行って口吻を伸ばして食べる。</b>
-  体は他のページと同じ NeuroMechFly の骨格で、歩行は flygym の CPG ＋ MuJoCo で実測した体速度、
-  身づくろいと旗を持つ動作は前脚足先の逆運動学。</p>
+  <p class="note" id="flynote">問題はテスト用の 5 フォント（練習には一度も出てこない）を毎回ちがう形にゆがめたもの。
+  答えの候補は、サーバの蠅がいままでに習った段の文字だけ。蠅は前脚で旗を立てて答え、正解なら餌が落ちてきて食べに行く。</p>
 </div>
 
 <div class="panel">
@@ -146,31 +144,32 @@
   <div class="padrow">
     <canvas id="pad" width="220" height="220"></canvas>
     <div class="side">
-      <canvas id="prev" width="12" height="12"></canvas>
-      <p class="guess" id="guess">–<small id="guesssub">ここに数字を 1 つ書くと出題が止まり、1 画書くごとに上の蠅が読んで旗で答える</small></p>
+      <canvas id="prev" width="16" height="16"></canvas>
+      <p class="guess" id="guess">–<small id="guesssub">ここにひらがなを 1 文字書くと出題が止まり、1 画書くごとに上の蠅が読んで旗で答える</small></p>
       <div class="row" style="margin-top:10px">
         <button id="backbtn">出題に戻る</button>
         <button id="clearbtn">消す</button>
       </div>
-      <p class="note">左上の小さな絵が、蠅に実際に見せる 12×12 の絵。MNIST と同じように真ん中に寄せて大きさをそろえ、
-      インクの量も MNIST の平均に合わせる（指の線は太すぎて、そのままだとケニヨン細胞の 4 分の 3 が発火してしまう）。</p>
+      <p class="note">左上の小さな絵が、蠅に実際に見せる 16×16 の絵。練習の絵と同じように、真ん中に寄せて大きさとインクの量をそろえる。
+      手書きでは練習していないので、フォントより読みにくい。</p>
     </div>
   </div>
 </div>
 
-<p class="sub">FlyWire の蠅の脳（キノコ体）が、サーバの上で休まず MNIST の手書き数字 1〜9 を練習している。
-1 枚ごとにまず答え、間違えたときだけドーパミンで直される。正答率はサーバで記録し続けている。
+<p class="sub">FlyWire の蠅の脳（キノコ体）が、サーバの上で休まずひらがなを練習している。
+あ行から始めて、<b>練習に一度も使っていないフォント</b>で 75% 読めたら五十音の次の段に進む。
 このページの蠅は、そのサーバの蠅の最新の脳をブラウザに写したもの。</p>
 
 <div class="panel">
   <h2><span>サーバの蠅の成績</span><span class="live" id="livestate">…</span></h2>
+  <div class="lvbox"><span id="lv">Lv –</span><span id="lvsub">記録を読み込んでいます…</span></div>
   <div class="stats">
     <div class="stat"><div class="k">練習した枚数</div><div class="v" id="practised">–</div><div class="s" id="since">&nbsp;</div></div>
     <div class="stat"><div class="k">練習中の正答率</div><div class="v" id="running">–</div><div class="s" id="runsub">&nbsp;</div></div>
-    <div class="stat"><div class="k">テスト（MNIST テストセット）</div><div class="v" id="testpct">–</div><div class="s" id="testsub">&nbsp;</div></div>
+    <div class="stat"><div class="k">テスト（未見フォント）</div><div class="v" id="testpct">–</div><div class="s" id="testsub">&nbsp;</div></div>
   </div>
   <div id="grid"></div>
-  <p class="note">小さな数字は最新テストでの数字ごとの正答率（%）。偶然なら 11%。</p>
+  <p class="note">小さな数字は最新テストでの文字ごとの正答率（%）。暗い字はまだ習っていない段。</p>
   <div class="feedwrap">
     <div class="note" style="margin:0">いまサーバで練習している問題（新しい順。赤は読み間違い、右下の小さな字が蠅の答え）</div>
     <div id="feed"></div>
@@ -181,17 +180,16 @@
   <h2><span>正答率の記録</span></h2>
   <div class="chartwrap"><canvas id="chart"></canvas><div id="charttip" hidden></div></div>
   <div class="legend">
-    <span><i id="legend-test"></i>テスト: MNIST のテストセットから 450 枚（練習には使わない）</span>
-    <span><i id="legend-run"></i>練習中: 直近 500 問（答える時点ではその絵を初めて見る）</span>
+    <span><i id="legend-test"></i>テスト: 練習に使わない 5 フォント × 習った文字（段が上がると文字が増えるので一度下がる）</span>
+    <span><i id="legend-run"></i>練習中: 直近 500 問（どれも答える時点では初めて見る絵）</span>
   </div>
-  <p class="note">全記録は <a href="../juku/state/suji/log.jsonl">log.jsonl</a>。
-  練習の絵は MNIST の訓練セット 54,077 枚を決まった順にめぐるので、一周（3〜4 時間）したあとの「練習中」は二度目に見る絵になる。テストの方はずっと未見のまま。</p>
+  <p class="note">縦線がレベルアップ。全記録は <a href="../juku/state/hiragana/log.jsonl">log.jsonl</a>。</p>
 </div>
 
 <div class="panel">
-  <h2><span>9 つの区画の出力</span></h2>
+  <h2><span>区画の出力（候補の上位）</span></h2>
   <table id="bars"><tbody></tbody></table>
-  <p class="note">数字は<b>その数字の区画の MBON が、この絵から受ける入力の強さ</b>（学習前を 100 とする）。
+  <p class="note">数字は<b>その文字の区画の MBON が、この絵から受ける入力の強さ</b>（学習前を 100 とする）。
   いちばん入力を受けていない区画が答え。棒は他の区画よりどれだけ弱いか。</p>
 </div>
 
@@ -202,51 +200,51 @@
     <span><i style="background:#2a323b"></i>発火していない KC</span>
     <span><i style="background:#59b7ff"></i>この絵で発火 <b id="pct">–</b></span>
   </div>
-  <p class="note">5,177 個のケニヨン細胞を FlyWire の実際の細胞体位置で並べたもの。
-  絵ごとに 1 割ほどの違う細胞が発火し、この<b>疎な符号</b>の重なりが「似ている絵」の定義になる。</p>
+  <p class="note">5,177 個のケニヨン細胞を FlyWire の実際の細胞体位置で並べたもの。</p>
 </div>
 
 <div class="panel">
   <h2><span>仕組み</span></h2>
-  <p class="note"><b>入力</b>: 12×12 の各ピクセルに、685 本の嗅覚投射ニューロンを 4〜5 本ずつ割り当て、
-  濃さに比例した（最大 220 Hz の）ポアソン入力で叩く。</p>
-  <p class="note"><b>符号化</b>: 5,177 個のケニヨン細胞のうち 1 割ほどが発火する（いわゆる fly hash）。</p>
-  <p class="note"><b>区画</b>: キノコ体の出力ニューロン（MBON）96 個を 9 組に分け、1 組を 1 つの数字の区画にした。
+  <p class="note"><b>入力</b>: 16×16 の各ピクセルに、685 本の嗅覚投射ニューロンを 2〜3 本ずつ割り当て、
+  濃さに比例した（最大 270 Hz の）ポアソン入力で叩く。数字の蠅（12×12）より細かくしたのは「ぬ/め」「る/ろ」「は/ほ」を分けるため。</p>
+  <p class="note"><b>符号化</b>: ケニヨン細胞 5,177 個のうち 1 割ほどが発火する。ここまでは匂いのときと全く同じ配線。</p>
+  <p class="note"><b>区画</b>: キノコ体の出力ニューロン（MBON）96 個を 46 組に分け、1 組を 1 文字の区画にした。
+  本物の区画は十数個しかなく、MBON の型も 35 種類なので、1 文字 = 1 型にはできない。
   どの組もケニヨン細胞からの入力がほぼ同じ量になるよう配ってある。</p>
   <p class="note"><b>学習（答えてから、間違えたときだけ）</b>: 蠅はまず 0.4 秒絵を見て答える。
-  間違えたら、絵を見せたまま 0.3 秒ドーパミンを入れる。正しい数字の区画には普通のドーパミン
+  間違えたら、絵を見せたまま 0.3 秒ドーパミンを入れる。正しい文字の区画には普通のドーパミン
   — 発火中のケニヨン細胞からの結合が<b>弱まる</b>（Hige et al. 2015）。
-  蠅が選んでしまった数字の区画には逆向きの信号 — 同じ結合が<b>強まる</b>
+  蠅が選んでしまった文字の区画には逆向きの信号 — 同じ結合が<b>強まる</b>
   （ドーパミンが匂いより先に来ると増強になる、Handler et al. 2019 に対応させた）。</p>
-  <p class="note"><b>読み出し</b>: 区画ごとに「発火したケニヨン細胞のスパイク数 × シナプス数 × 学習した重み」を足し、
-  学習前の値で割る。いちばん小さい区画が答え。</p>
-</div>
-
-<div class="panel">
-  <h2><span>正直な比較</span></h2>
-  <p class="note">以前このページでブラウザ内だけで学習させていた版（区画 = MBON 9 型、「弱める」だけの学習、各数字を数枚ずつ）は、
-  各 12 枚で <b>44.1%</b> だった。同じ 144 ピクセルを普通のロジスティック回帰に入れると各 12 枚で 66.9%、各 60 枚で 82.6%。</p>
-  <p class="note">開発中に発火パターンを保存して学習だけを近似計算した実験では、今の方式で練習 4,000 枚のとき 73〜80%、
-  同じ 4,000 枚でも「弱める」だけの規則だと 64〜66% だった。間違えたときに誤答側を強める一手で 10 ポイント前後変わる。
-  ケニヨン細胞の発火パターン全体をそのまま線形分類器（パーセプトロン）に渡すと 82% で、これがこの符号で届く上限の目安。
-  サーバの蠅がどこで頭打ちになるかは、上の記録が答え。</p>
-  <p class="note"><b>限界</b>: 全脳モデルは嗅覚入力を入れると中枢が暴走するため、キノコ体だけを動かして残りの脳は止めてある。
-  可塑性はこの実装の追加で、Shiu et al. のモデルには無い。</p>
+  <p class="note"><b>レベル</b>: 1,500 枚練習するごとに、練習に使わない 5 フォント × 習った文字 × 2 通りのゆがみでテストし、
+  75% 以上なら次の段を解禁する。新しい段の文字が練習の半分を占めるようにしてある。</p>
+  <p class="note"><b>どこまで行けそうか（開発中の見積もり）</b>: 発火パターンを保存して学習だけを近似計算した実験では、
+  10 文字で 9 割強、20 文字で 9 割弱、30 文字で約 8 割、46 文字全部で 7 割前後（練習 3 万枚）だった。
+  ケニヨン細胞の発火パターン全体を線形分類器にそのまま渡すと 46 文字で 84% なので、残りの差は「1 文字あたり MBON 2 個」という読み出しの細さから来ている。
+  最後の段まで 75% を保てるかは、上の記録を見るまでわからない。</p>
+  <p class="note"><b>限界</b>: 練習の絵は<b>手書きではなくフォント</b>（Google Fonts の 35 書体）をゆがめたもの。
+  全脳モデルは嗅覚入力で中枢が暴走するため、キノコ体だけを動かして残りの脳は止めてある。
+  学習規則はこの実装で加えたもので、Shiu et al. のモデルにはない。</p>
 </div>
 
 <footer>
-  数字: <a href="http://yann.lecun.com/exdb/mnist/">MNIST</a> を 12×12 に縮小 /
+  文字: Google Fonts（SIL Open Font License）の日本語 40 書体。テスト用は Klee One / Zen Kurenaido / Shippori Mincho / M PLUS Rounded 1c / Sawarabi Gothic /
   モデル: <a href="https://github.com/philshiu/Drosophila_brain_model">philshiu/Drosophila_brain_model</a>
   (Shiu et al., <i>Nature</i> 2024) / コネクトーム: FlyWire v783
   (<a href="https://codex.flywire.ai/">Dorkenwald, Matsliah et al.</a>, CC-BY 4.0) /
   細胞型注釈: <a href="https://github.com/flyconnectome/flywire_annotations">Schlegel et al. 2024</a>, CC-BY 4.0.<br>
-  <a href="/hiragana/">ひらがなを読む蠅</a> · <a href="/gakushu/">匂いを覚えさせる</a> · <a href="/">ハエたたき</a> ·
+  <a href="/suji/">数字を読む蠅</a> · <a href="/gakushu/">匂いを覚えさせる</a> · <a href="/">ハエたたき</a> ·
   <a href="/kansatsu/">蠅観察</a> · <a href="/game/">うんち陣取り</a> · <a href="/meiro/">迷路</a>
 </footer>
 
 <script type="module">
 import { runPage } from '../juku/page.js?v=6';
-runPage({ course: 'suji', rows: ['123456789'], padInk: 17.7, pen: 0.085 });
+import { ROWS, INK } from './kana.mjs?v=2';
+const ROWNAME = ['あ', 'か', 'さ', 'た', 'な', 'は', 'ま', 'や', 'ら', 'わ'];
+runPage({
+  course: 'hiragana', rows: ROWS, padInk: INK, pen: 0.075,
+  levelName: (lv) => `${ROWNAME[Math.min(lv, 10) - 1]}行`,
+});
 </script>
 </body>
 </html>

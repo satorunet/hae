@@ -67,6 +67,20 @@ brain.forget();                                // every gain back to 1
 | `dopamine(group, level)` | set a compartment's dopamine directly |
 | `gain(group)` / `gainFrom(pre)` / `gainByGroup(pre)` / `gainOf(pre, post)` | read the learned weights |
 | `forget()` | back to naive |
+| `driveByGroup(pre, spikes)` | per compartment: spikes x synapses x gain over `pre`, relative to naive - what its MBONs actually receive |
+| `exportGains()` / `importGains(f32)` | save a learned brain and load it into another copy set up the same way |
+
+A negative `dopamine(group, level)` strengthens instead of weakening, up to
+`gainMax` (default 1, i.e. back to naive at most) - the potentiation seen when
+dopamine arrives before the odour (Handler et al. 2019). DANs themselves only
+ever add positive dopamine.
+
+[/suji/](../suji/) and [/hiragana/](../hiragana/) use this for error-driven
+learning, trained around the clock on the server by `../juku/trainer.mjs`
+(pm2: `hae-juku-suji`, `hae-juku-hiragana`): the fly answers first, and only a
+wrong answer brings dopamine - positive to the right letter's compartment,
+negative to the one it picked - while the picture is still being shown. The
+pages load the newest weights from `juku/state/<course>/`.
 
 `data/mb783.json` (Kenyon cells, MBONs, DANs and olfactory projection neurons,
 from `tools/build_mb.py`) and `data/mbcompart783.json` (which DANs gate which

@@ -156,7 +156,7 @@ export class FlagFly {
     g.fillRect(0, 0, 128, 128);
     g.strokeStyle = '#aeb8c4'; g.lineWidth = 5; g.strokeRect(2.5, 2.5, 123, 123);
     g.fillStyle = '#141a21';
-    g.font = '700 86px system-ui, sans-serif';
+    g.font = '700 86px "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", system-ui, sans-serif';
     g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillText(String(d), 64, 68);
     tex.needsUpdate = true;

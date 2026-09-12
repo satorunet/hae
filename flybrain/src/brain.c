@@ -116,9 +116,15 @@ static i32 t_step;
  *
  *   trace[j] += 1        on a spike of a nominated presynaptic neuron j
  *   dopa[c]  += weight   on a spike of a modulator neuron (a DAN) of group c
- *   gain     -= eta * trace[pre] * dopa[group]      clipped to [gain_min, 1]
+ *   gain     -= eta * trace[pre] * dopa[group]      clipped to [gain_min, gain_max]
  *   gain     -> 1 slowly                            (forgetting)
  * and the synapse delivers w_syn * count * gain.
+ *
+ * Dopamine may be set negative (fb_dopa_set). The same product then
+ * strengthens the synapse instead - the potentiation seen when dopamine
+ * arrives *before* the odour rather than with it (Handler et al. 2019).
+ * DANs only ever add positive dopamine, so nothing changes unless the
+ * caller asks for it.
  */
 static u32 pl_on;
 static float **rowgain;     /* N: per-synapse gain for a nominated row, or 0 */
@@ -135,6 +141,7 @@ static u32 *mod_at;         /* N -> first modulator entry of that neuron, or NON
 static i32 *mod_grp; static float *mod_w; static u32 *mod_next;
 static u32 n_mod, cap_mod;
 static double P_eta = 0.02, P_trdec = 1.0, P_dodec = 1.0, P_gmin = 0.0, P_recov = 0.0;
+static double P_gmax = 1.0;
 static i32 P_every = 10;    /* apply the rule every this many steps */
 #define NONE 0xffffffffu
 
@@ -281,8 +288,14 @@ EXPORT(fb_set_v) void fb_set_v(u32 i, double mv) {
 }
 
 /* ------------------------------------------------------- plasticity setup */
+/* gain probes (see fb_gain_probe_reset), sized per group */
+static double *probe_sum;
+static u32 *probe_n;
+static double *probe_w;     /* weighted probe (fb_drive_probe_add), allocated on first use */
+
 EXPORT(fb_plastic_init) i32 fb_plastic_init(u32 groups, u32 mod_capacity) {
     n_group = groups; cap_mod = mod_capacity; n_mod = 0; n_pl_pres = 0; n_elig = 0;
+    probe_sum = 0; probe_n = 0; probe_w = 0;     /* re-sized for the new groups on next use */
     rowgain = (float **)fb_alloc(N * 4);
     rowgrp  = (i32 **)fb_alloc(N * 4);
     pl_pres = (u32 *)fb_alloc(N * 4);
@@ -357,6 +370,36 @@ EXPORT(fb_dopa_set) void fb_dopa_set(i32 c, double level) {
     if (c >= 0 && (u32)c < n_group) dopa[c] = level;
 }
 
+/* ceiling for potentiation (negative dopamine); 1 = back to naive at most */
+EXPORT(fb_plastic_gmax) void fb_plastic_gmax(double gmax) { P_gmax = gmax; }
+
+/* Every plastic synapse's gain, in a fixed order (nominated rows in the order
+ * they were nominated, synapses in CSR order): count them, then copy them out
+ * to (dir 0) or in from (dir 1) a float buffer - to save a learned brain and
+ * load it into another copy of the same wiring. */
+EXPORT(fb_plastic_size) u32 fb_plastic_size(void) {
+    u32 n = 0;
+    for (u32 k = 0; k < n_pl_pres; k++) {
+        const u32 j = pl_pres[k], b = indptr[j], e = indptr[j + 1];
+        for (u32 q = b; q < e; q++) if (rowgrp[j][q - b] >= 0) n++;
+    }
+    return n;
+}
+
+EXPORT(fb_plastic_copy) u32 fb_plastic_copy(u32 ptr, i32 dir) {
+    float *buf = (float *)ptr;
+    u32 n = 0;
+    for (u32 k = 0; k < n_pl_pres; k++) {
+        const u32 j = pl_pres[k], b = indptr[j], e = indptr[j + 1];
+        for (u32 q = b; q < e; q++) {
+            if (rowgrp[j][q - b] < 0) continue;
+            if (dir) rowgain[j][q - b] = buf[n]; else buf[n] = rowgain[j][q - b];
+            n++;
+        }
+    }
+    return n;
+}
+
 /* mean gain of group c's synapses, and how many they are */
 EXPORT(fb_gain_mean) double fb_gain_mean(i32 c) {
     double s = 0.0; u32 n = 0;
@@ -371,8 +414,6 @@ EXPORT(fb_gain_mean) double fb_gain_mean(i32 c) {
 /* Read the learned weights of one presynaptic population, per group: reset,
  * add the cells one by one, then read the sums and counts. This is how a
  * postsynaptic cell sees that population - the drive it has left. */
-static double *probe_sum;
-static u32 *probe_n;
 
 EXPORT(fb_gain_probe_reset) i32 fb_gain_probe_reset(void) {
     if (!probe_sum) {
@@ -381,6 +422,7 @@ EXPORT(fb_gain_probe_reset) i32 fb_gain_probe_reset(void) {
         if (!probe_sum || !probe_n) return -1;
     }
     for (u32 c = 0; c < n_group; c++) { probe_sum[c] = 0.0; probe_n[c] = 0; }
+    if (probe_w) for (u32 c = 0; c < n_group; c++) probe_w[c] = 0.0;
     return 0;
 }
 
@@ -393,6 +435,28 @@ EXPORT(fb_gain_probe_add) void fb_gain_probe_add(u32 j) {
     }
 }
 
+/* The same probe weighted the way the postsynaptic cell actually hears it:
+ * each synapse counts w (the presynaptic cell's spikes, say) times its synapse
+ * count. sum / weight is then the drive a group receives relative to naive. */
+EXPORT(fb_drive_probe_add) i32 fb_drive_probe_add(u32 j, double w) {
+    if (!probe_w) {
+        probe_w = (double *)fb_alloc((n_group + 1) * 8);
+        if (!probe_w) return -1;
+        for (u32 c = 0; c < n_group; c++) probe_w[c] = 0.0;
+    }
+    if (!rowgain[j]) return 0;
+    const u32 b = indptr[j], e = indptr[j + 1];
+    for (u32 q = b; q < e; q++) {
+        const i32 c = rowgrp[j][q - b];
+        if (c < 0) continue;
+        const double k = w * (double)wcount[q];
+        probe_sum[c] += k * (double)rowgain[j][q - b];
+        probe_w[c] += k;
+    }
+    return 0;
+}
+
+EXPORT(fb_ptr_probe_w) u32 fb_ptr_probe_w(void) { return (u32)probe_w; }
 EXPORT(fb_ptr_probe_sum) u32 fb_ptr_probe_sum(void) { return (u32)probe_sum; }
 EXPORT(fb_ptr_probe_n)   u32 fb_ptr_probe_n(void)   { return (u32)probe_n; }
 
@@ -501,7 +565,7 @@ EXPORT(fb_run) u32 fb_run(u32 steps) {
         /* 5: learning - dopamine meets a recently active presynaptic cell */
         if (pl_on && (t % P_every) == 0) {
             u32 wet = 0;
-            for (u32 c = 0; c < n_group; c++) if (dopa[c] > 1e-9) wet = 1;
+            for (u32 c = 0; c < n_group; c++) if (dopa[c] > 1e-9 || dopa[c] < -1e-9) wet = 1;
             if (wet) {
                 u32 keep2 = 0;
                 for (u32 k = 0; k < n_elig; k++) {
@@ -516,9 +580,10 @@ EXPORT(fb_run) u32 fb_run(u32 steps) {
                         const i32 c = gr[q - b];
                         if (c < 0) continue;
                         const double d = dopa[c];
-                        if (d <= 1e-9) continue;
+                        if (d <= 1e-9 && d >= -1e-9) continue;
                         double m = (double)gn[q - b] - dtr * d;
                         if (m < P_gmin) m = P_gmin;
+                        if (m > P_gmax) m = P_gmax;
                         gn[q - b] = (float)m;
                     }
                 }
