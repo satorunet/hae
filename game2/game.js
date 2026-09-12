@@ -1101,9 +1101,9 @@ function swat(x, y, by, quiet) {
     f.alarmT = world.t + (near ? 0 : rnd(0.04, 0.05 + d * 0.008));
     f.alarmX = x; f.alarmY = y; f.alarmNear = near;
     f.alarmGain = near ? 1.15 : rnd(0.55, 1.0);
-    // only a few bolt before the mesh has even started down — otherwise aiming stops mattering,
-    // since the looming response and the scatter on impact already give them two ways out
-    if (near && !f.startle && Math.random() < 0.12) {
+    // close to half of them are already going before the mesh has started down, on top of the
+    // looming response on the way and the scatter on impact: they are meant to be hard to catch
+    if (near && !f.startle && Math.random() < 0.45) {
       f.startle = { at: world.t + rnd(0.004, 0.028), dir: Math.atan2(f.y - y, f.x - x) + rnd(-0.5, 0.5) };
     }
   }
