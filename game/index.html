@@ -2,105 +2,148 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <title>うんち陣取り — 蠅あつめ対戦</title>
-<meta name="description" content="同じ画面で2人対戦。うんちを置いて、より多くの蠅を集めた方が勝ち。蠅は本物のショウジョウバエの体（NeuroMechFly）で動きます。">
+<meta name="description" content="スマホで1対1。うんちを置いて、より多くの蠅を集めた方が勝ち。蠅は本物のショウジョウバエの体（NeuroMechFly）で動きます。">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A6%9F%3C/text%3E%3C/svg%3E">
+<meta name="theme-color" content="#0d0d0d">
+<meta name="mobile-web-app-capable" content="yes">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="hae.satoru.net">
 <meta property="og:locale" content="ja_JP">
 <meta property="og:url" content="https://hae.satoru.net/game/">
 <meta property="og:title" content="うんち陣取り — 蠅あつめ対戦">
-<meta property="og:description" content="同じ画面で2人対戦。うんちを置いて、より多くの蠅を集めた方が勝ち。">
+<meta property="og:description" content="スマホで1対1。うんちを置いて、より多くの蠅を集めた方が勝ち。">
 <meta property="og:image" content="https://hae.satoru.net/og.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="うんち陣取り — 蠅あつめ対戦">
-<meta name="twitter:description" content="同じ画面で2人対戦。うんちを置いて、より多くの蠅を集めた方が勝ち。">
+<meta name="twitter:description" content="スマホで1対1。うんちを置いて、より多くの蠅を集めた方が勝ち。">
 <meta name="twitter:image" content="https://hae.satoru.net/og.jpg">
 <style>
+/* 画面はスマホ縦持ちが基準。1画面に収めきり、ページ自体はスクロールしない */
 :root {
-  color-scheme: light;
-  --page: #f9f9f7; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781; --ring: rgba(11,11,11,0.10);
-  --btn: #f0efec; --accent: #2a78d6; --stage: #cfd3cf; --card: #fff;
-  --red: #e04b3c; --blue: #2f74d0;
+  color-scheme: dark;
+  --page: #0d0d0d; --ink: #f4f4f2; --ink-2: #b9b8b1; --muted: #85847e;
+  --ring: rgba(255,255,255,0.12); --btn: #232322; --card: #191918; --stage: #1d2126;
+  --red: #ff6a58; --blue: #5c9bf0; --accent: #ffcf5a;
+  --bar: 52px; --turn: 38px;
 }
-@media (prefers-color-scheme: dark) {
-  :root:where(:not([data-theme="light"])) { color-scheme: dark; --page: #0d0d0d; --ink: #fff; --ink-2: #c3c2b7; --ring: rgba(255,255,255,0.10); --btn: #262624; --accent: #3987e5; --stage: #1d2126; --card: #1a1a19; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  overflow: hidden; overscroll-behavior: none; touch-action: manipulation;
+  font: 15px/1.6 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
 }
-* { box-sizing: border-box; }
-html { touch-action: manipulation; }
-body { margin: 0; background: var(--page); color: var(--ink); padding-inline: 12px;
-  font: 14px/1.6 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif; }
-main { max-width: 1100px; margin: 0 auto; padding-block: 10px 28px; }
-.top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
-h1 { font-size: 1.05rem; margin: 0; }
-h1 a { color: inherit; text-decoration: none; }
-select { font: inherit; font-size: 16px; color: var(--ink); background: var(--btn); border: 1px solid var(--ring); border-radius: 8px; padding: 3px 8px; }
-button { font: inherit; color: var(--ink); background: var(--btn); border: 1px solid var(--ring); border-radius: 8px; padding: 6px 14px; cursor: pointer; }
-/* score bar */
-.bar { display: grid; grid-template-columns: 1fr minmax(0, 1.5fr) 1fr; gap: 8px; align-items: stretch; margin-bottom: 8px; }
-.p { background: var(--card); border: 2px solid var(--ring); border-radius: 10px; padding: 5px 10px; display: flex; align-items: baseline; gap: 8px; }
-.p.p1 { justify-content: flex-end; }
-.p .nm { font-weight: 700; }
-.p .sc { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
-.p .ct { font-size: 0.78rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
-.p0 { border-color: var(--red); } .p0 .nm, .p0 .sc { color: var(--red); }
-.p1 { border-color: var(--blue); } .p1 .nm, .p1 .sc { color: var(--blue); }
-.p.active { box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 25%, transparent); }
-.mid { display: flex; align-items: center; justify-content: center; text-align: center; font-size: 0.86rem; color: var(--ink-2); }
-/* stage */
-.stage { position: relative; border-radius: 12px; overflow: hidden; background: var(--stage); height: min(72vh, 720px); min-height: 340px; touch-action: none; }
-#view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
-.load { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #333; font-size: 0.9rem; }
-.msg { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); background: rgba(11,11,11,0.75); color: #fff; font-size: 0.84rem;
-  padding: 5px 14px; border-radius: 14px; pointer-events: none; opacity: 0; transition: opacity 0.25s; }
+button { font: inherit; color: var(--ink); background: var(--btn); border: 1px solid var(--ring); border-radius: 12px; cursor: pointer; }
+button:active { transform: scale(0.985); }
+
+/* ---------------------------------------------------------------- 盤面 */
+#app {
+  position: fixed; inset: 0; display: flex; flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+.bar {
+  flex: 0 0 auto; height: var(--bar); display: grid; grid-template-columns: 1fr auto 1fr;
+  align-items: center; gap: 6px; padding: 0 8px;
+}
+.scores { display: flex; align-items: baseline; justify-content: center; gap: 18px; min-width: 0; }
+.p { position: relative; display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.pop {
+  position: absolute; bottom: 4px; left: 50%; pointer-events: none;
+  font-size: 0.92rem; font-weight: 800; font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.6); animation: pop 0.9s ease-out forwards;
+}
+.pop.up { color: #74e08d; }
+.pop.dn { color: #ff8d76; }
+@keyframes pop {
+  0%   { opacity: 0; transform: translate(-50%, 9px) scale(0.8); }
+  22%  { opacity: 1; transform: translate(-50%, 0) scale(1.15); }
+  100% { opacity: 0; transform: translate(-50%, -17px) scale(1); }
+}
+.p.p1 { justify-content: flex-start; }
+.p .nm { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em; }
+.p .sc { font-size: 1.55rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+.p .ct { font-size: 0.68rem; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.p0 .nm, .p0 .sc { color: var(--red); }
+.p1 .nm, .p1 .sc { color: var(--blue); }
+.p.active .nm { background: currentColor; color: #0d0d0d; border-radius: 6px; padding: 1px 6px; }
+.clock { justify-self: end; text-align: right; font-size: 0.95rem; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+/* 画面の大半は蠅の居る地面 */
+.stage { position: relative; flex: 1 1 0; min-height: 0; overflow: hidden; background: var(--stage); }
+#view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.load { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #cfcfc8; font-size: 0.9rem; }
+.msg {
+  position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); max-width: 92%;
+  background: rgba(10,10,10,0.8); color: #fff; font-size: 0.84rem; text-align: center;
+  padding: 6px 15px; border-radius: 16px; pointer-events: none; opacity: 0; transition: opacity 0.25s;
+}
 .msg.show { opacity: 1; }
-.result { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(10,10,10,0.55); }
+/* display:block なので <b> も同じ行に流れる（flex にすると語ごとに折り返してしまう） */
+.turn {
+  flex: 0 0 auto; min-height: var(--turn); display: block;
+  text-align: center; font-size: 0.86rem; color: var(--ink-2); padding: 9px 12px 0;
+}
+.turn b { color: var(--ink); }
+
+/* 結果 */
+.result { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(8,8,8,0.6); padding: 16px; }
 .result[hidden] { display: none; }
-.result .box { background: var(--card); border-radius: 14px; padding: 20px 26px; text-align: center; box-shadow: 0 8px 30px rgba(0,0,0,0.4); }
-#r-title { font-size: 1.5rem; font-weight: 700; }
-#r-score { font-size: 1.1rem; margin: 8px 0 14px; font-variant-numeric: tabular-nums; }
+.result .box { background: var(--card); border: 1px solid var(--ring); border-radius: 16px; padding: 22px 24px; text-align: center; width: 100%; max-width: 320px; }
+#r-title { font-size: 1.5rem; font-weight: 800; }
+#r-score { font-size: 1.05rem; margin: 10px 0 18px; font-variant-numeric: tabular-nums; }
 #r-score .vs { color: var(--muted); }
-/* the notice */
-.warn { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(10,10,10,0.88); }
-.warn-box { background: #1b1b1a; color: #f4f4f2; border-radius: 14px; padding: 22px 22px 18px; max-width: 380px; width: 100%; text-align: left; box-shadow: 0 8px 30px rgba(0,0,0,0.5); }
-.warn-t { font-size: 1.3rem; font-weight: 700; color: #ffcf5a; }
-.warn-box p { font-size: 0.9rem; line-height: 1.7; color: #d8d8d4; margin: 12px 0 0; }
-.warn-box ol { font-size: 0.9rem; line-height: 1.7; color: #d8d8d4; margin: 10px 0 0; padding-left: 1.3em; }
-.warn-box .ok { margin-top: 18px; text-align: right; }
-.warn-box button { font-size: 1rem; padding: 9px 44px; background: #ffcf5a; color: #1b1b1a; border: 0; font-weight: 700; border-radius: 10px; }
-.note { color: var(--muted); font-size: 0.72rem; margin: 8px 0 0; }
-.note a { color: var(--accent); }
+#again { width: 100%; min-height: 52px; font-size: 1.02rem; font-weight: 700; background: var(--accent); color: #191918; border: 0; }
+
+/* ---------------------------------------------------------------- ロビー（最初の画面） */
+.lobby { position: fixed; inset: 0; z-index: 10; background: #0b0b0b; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.lobby[hidden] { display: none; }
+.lobby-inner {
+  min-height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 14px;
+  max-width: 420px; margin: 0 auto;
+  padding: calc(env(safe-area-inset-top) + 24px) 20px calc(env(safe-area-inset-bottom) + 24px);
+}
+.warn-t { font-size: 1.22rem; font-weight: 800; color: var(--accent); }
+.lobby p { margin: 0; font-size: 0.9rem; line-height: 1.75; color: var(--ink-2); }
+.lobby h2 { font-size: 0.94rem; margin: 4px 0 0; }
+.rules { margin: 0; padding-left: 1.25em; font-size: 0.88rem; line-height: 1.8; color: var(--ink-2); }
+.rules b { color: var(--ink); }
+.acts { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.acts button { min-height: 56px; font-size: 1.04rem; font-weight: 700; padding: 0 16px; }
+.acts .primary { background: var(--accent); color: #191918; border: 0; }
+.acts .sub { min-height: 46px; font-size: 0.92rem; font-weight: 500; color: var(--ink-2); background: transparent; }
+.hero { font-size: 3.2rem; text-align: center; line-height: 1; animation: hover 2.4s ease-in-out infinite; }
+@keyframes hover { 0%, 100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(-10px) rotate(6deg); } }
+#lobby-status { min-height: 1.4em; font-size: 0.86rem; color: var(--accent); text-align: center; }
+#lobby-status.spin::after { content: ''; animation: dots 1.2s steps(4, end) infinite; }
+@keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
+.note { color: var(--muted); font-size: 0.72rem; line-height: 1.7; margin: 6px 0 0; text-align: center; }
+.note a { color: #7fb0ea; }
+
+/* ---------------------------------------------------------------- 横長・PC では中央に寄せる */
+@media (min-width: 700px) and (min-height: 520px) {
+  :root { --bar: 60px; --turn: 44px; }
+  #app { max-width: 1000px; margin: 0 auto; }
+  .stage { border-radius: 14px; }
+  .p .sc { font-size: 1.8rem; }
+}
+@media (max-height: 560px) {
+  :root { --bar: 44px; --turn: 30px; }
+  .p .sc { font-size: 1.25rem; }
+}
 </style>
 </head>
 <body>
-<div class="warn" id="warn" role="dialog" aria-modal="true" aria-labelledby="warn-t">
-  <div class="warn-box">
-    <div class="warn-t" id="warn-t">⚠️ 閲覧注意</div>
-    <p>このサイトは蠅の脳の分析・研究を目的としたサイトです。うんちと、それに群がる蠅（ハエ）が大きく映ります。音が出ます。</p>
-    <p><b>うんち陣取り</b>（同じ画面で2人対戦）</p>
-    <ol>
-      <li>赤 → 青の順に、地面をタップしてうんちを置く（1人3個）</li>
-      <li>自分のうんちに集まっている蠅の数が、毎秒スコアになる</li>
-      <li>置き終わったら40秒。合計スコアが多い方の勝ち</li>
-    </ol>
-    <p>指でなぞると手で蠅を追い払えます（相手の邪魔もできます）。</p>
-    <div class="ok"><button id="warn-ok">OK</button></div>
-  </div>
-</div>
-<main>
-  <div class="top">
-    <h1>うんち陣取り <span style="color:var(--muted);font-weight:500;font-size:0.82rem">— 蠅あつめ対戦</span></h1>
-    <label title="蠅の数">
-      <select id="n-flies" aria-label="蠅の数">
-        <option value="10">🦟 10</option><option value="20">🦟 20</option>
-        <option value="30" selected>🦟 30</option><option value="50">🦟 50</option>
-      </select></label>
-  </div>
+
+<div id="app">
   <div class="bar">
-    <div class="p p0" id="p0"><span class="nm">赤</span><span class="sc" id="s0">0</span><span class="ct">いま <span id="c0">0</span> 匹</span></div>
-    <div class="mid" id="turn"></div>
-    <div class="p p1" id="p1"><span class="ct">いま <span id="c1">0</span> 匹</span><span class="sc" id="s1">0</span><span class="nm">青</span></div>
+    <div></div>
+    <div class="scores">
+      <div class="p p0" id="p0"><span class="nm">赤</span><span class="sc" id="s0">0</span><span class="ct">匹</span></div>
+      <div class="p p1" id="p1"><span class="nm">青</span><span class="sc" id="s1">0</span><span class="ct">匹</span></div>
+    </div>
+    <div class="clock" id="clock"></div>
   </div>
   <div class="stage" id="stage">
     <canvas id="view" aria-label="うんちに群がる蠅のフィールド"></canvas>
@@ -114,8 +157,44 @@ button { font: inherit; color: var(--ink); background: var(--btn); border: 1px s
       </div>
     </div>
   </div>
-  <p class="note">体: <a href="https://github.com/NeLy-EPFL/flygym">flygym</a> NeuroMechFly ・ 脳: <a href="https://flywire.ai/">FlyWire</a> / <a href="https://github.com/philshiu/Drosophila_brain_model">Shiu et al.</a> ・ <a href="/">本編（1匹の脳を見る）</a></p>
-</main>
-<script type="module" src="game.js?v=7"></script>
+  <div class="turn" id="turn"></div>
+</div>
+
+<div class="lobby" id="lobby">
+  <div class="lobby-inner">
+
+    <div id="lobby-menu">
+      <div class="warn-t">⚠️ 閲覧注意</div>
+      <p>蠅の脳の研究サイトです。うんちと、それに群がる蠅が大きく映ります。音が出ます。</p>
+
+      <h2>うんち陣取り — 1対1</h2>
+      <ol class="rules">
+        <li>赤 → 青の順に、地面をタップしてうんちを置く（<b>1人3個</b>）</li>
+        <li>置き終わると試合開始。蠅が <b>50匹</b> に増えて <b>30秒</b></li>
+        <li>上の数字は、いま自分のうんちに<b>ついている蠅の数</b>。終了時に多い方の勝ち</li>
+      </ol>
+      <p>試合中は見守るだけ。手で払うなどの妨害はできません。指でなぞると視点だけ動きます。</p>
+
+      <div class="acts">
+        <button class="primary" id="btn-online">だれかと対戦する</button>
+        <button id="btn-local">この端末で2人対戦</button>
+      </div>
+      <p class="note">体: <a href="https://github.com/NeLy-EPFL/flygym">flygym</a> NeuroMechFly ・ 脳: <a href="https://flywire.ai/">FlyWire</a> / <a href="https://github.com/philshiu/Drosophila_brain_model">Shiu et al.</a><br><a href="/">🪰 ハエたたき（1分）</a> ・ <a href="/game2/">ハエたたき 1対1</a> ・ <a href="/kansatsu/">蠅観察</a></p>
+    </div>
+
+    <div id="lobby-wait" hidden>
+      <div class="hero">🦟</div>
+      <h2>あいてを探しています</h2>
+      <p>いま遊んでいる人と自動でつながります。相手が見つかると<b>赤（先手）</b>か<b>青（後手）</b>が決まって、すぐ始まります。</p>
+      <div id="lobby-status"></div>
+      <div class="acts">
+        <button class="sub" id="btn-back">やめる</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script type="module" src="game.js?v=16"></script>
 </body>
 </html>

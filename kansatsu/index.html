@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>蠅観察 — うんちに群がる蠅</title>
+<meta name="description" content="本物のショウジョウバエの脳の配線図（FlyWire・13.9万ニューロン）で動く蠅が、うんちに群がる3Dシミュレーション。蠅をタップすると、その蠅の脳の中の発火が見えます。">
+<link rel="canonical" href="https://hae.satoru.net/kansatsu/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A6%9F%3C/text%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="hae.satoru.net">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:url" content="https://hae.satoru.net/kansatsu/">
+<meta property="og:title" content="蠅観察 — うんちに群がる蠅">
+<meta property="og:description" content="本物のショウジョウバエの脳の配線図（FlyWire・13.9万ニューロン）で動く蠅が、うんちに群がる3Dシミュレーション。蠅をタップすると、その蠅の脳の中の発火が見えます。">
+<meta property="og:image" content="https://hae.satoru.net/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="うんちのまわりに集まる、たくさんのショウジョウバエの3D画像">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="蠅観察 — うんちに群がる蠅">
+<meta name="twitter:description" content="本物のショウジョウバエの脳の配線図（FlyWire・13.9万ニューロン）で動く蠅が、うんちに群がる3Dシミュレーション。蠅をタップすると、その蠅の脳の中の発火が見えます。">
+<meta name="twitter:image" content="https://hae.satoru.net/og.jpg">
+<meta name="twitter:image:alt" content="うんちのまわりに集まる、たくさんのショウジョウバエの3D画像">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781; --ring: rgba(11,11,11,0.10);
+  --btn: #f0efec; --accent: #2a78d6; --stage: #cfd3cf;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) { color-scheme: dark; --page: #0d0d0d; --ink: #ffffff; --ink-2: #c3c2b7; --ring: rgba(255,255,255,0.10); --btn: #262624; --accent: #3987e5; --stage: #1d2126; }
+}
+:root[data-theme="dark"] { color-scheme: dark; --page: #0d0d0d; --ink: #ffffff; --ink-2: #c3c2b7; --ring: rgba(255,255,255,0.10); --btn: #262624; --accent: #3987e5; --stage: #1d2126; }
+* { box-sizing: border-box; }
+html { touch-action: manipulation; }   /* no double-tap zoom */
+body { margin: 0; background: var(--page); color: var(--ink); padding-inline: 16px;
+  font: 14px/1.6 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif; }
+main { max-width: 1200px; margin: 0 auto; padding-block: 14px 40px; }
+.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-bottom: 10px; }
+h1 { font-size: 1.2rem; margin: 0; }
+h1 span { color: var(--muted); font-weight: 500; }
+button { font: inherit; font-size: 0.86rem; color: var(--ink); background: var(--btn); border: 1px solid var(--ring); border-radius: 8px; padding: 5px 12px; cursor: pointer; }
+.stage { position: relative; border-radius: 12px; overflow: hidden; background: var(--stage); height: min(78vh, 760px); min-height: 380px; touch-action: none; }
+#view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+.load { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #333; font-size: 0.9rem; }
+/* the tapped fly's brain, small, inside the view */
+.brain { position: absolute; right: 8px; top: 8px; width: min(230px, 50%); background: rgba(12,14,18,0.8); color: #f2f2f2; border-radius: 10px;
+  padding: 5px 8px 6px; box-shadow: 0 3px 12px rgba(0,0,0,0.3); }
+.brain[hidden] { display: none; }
+.brain .hd { display: flex; justify-content: space-between; align-items: center; font-size: 0.72rem; line-height: 1.3; }
+.brain .x { background: none; border: 0; color: #bbb; font-size: 1.05rem; line-height: 1; padding: 0 2px; }
+#brainmap { width: 100%; display: block; margin-top: 3px; }
+.brain .now { font-size: 0.72rem; line-height: 1.35; margin-top: 3px; }
+.brain .now .why { color: #aeb3bb; font-size: 0.62rem; display: block; }
+.brain .pbar { height: 3px; background: rgba(255,255,255,0.15); border-radius: 2px; overflow: hidden; margin-top: 4px; }
+.brain .pbar i { display: block; height: 100%; width: 0; background: #3987e5; }
+.warn { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 16px;
+  background: rgba(10,10,10,0.88); }
+.warn-box { background: #1b1b1a; color: #f4f4f2; border-radius: 14px; padding: 22px 22px 18px; max-width: 360px; width: 100%; text-align: left;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.5); }
+.warn-t { font-size: 1.3rem; font-weight: 700; color: #ffcf5a; }
+.warn-box p { font-size: 0.92rem; line-height: 1.7; color: #d8d8d4; margin: 12px 0 0; }
+.warn-box .ok { margin-top: 18px; }
+.warn-box .ok { text-align: right; }
+.warn-box button { font-size: 1rem; padding: 9px 44px; background: #ffcf5a; color: #1b1b1a; border: 0; font-weight: 700; border-radius: 10px; }
+.ctrl { display: flex; align-items: center; gap: 10px; }
+.ctrl button { font-size: 1.25rem; line-height: 1; padding: 5px 9px; }
+.ctrl .rf { font-size: 1rem; margin-left: 2px; vertical-align: 1px; color: var(--ink-2); }
+.count { display: flex; align-items: center; gap: 8px; font-size: 0.86rem; color: var(--ink-2); }
+.count select { font: inherit; font-size: 16px; color: var(--ink); background: var(--btn); border: 1px solid var(--ring); border-radius: 8px; padding: 3px 8px; }
+.link { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.link .halo { stroke: rgba(0,0,0,0.35); stroke-width: 4; stroke-dasharray: 6 5; stroke-linecap: round; }
+.link .dash { stroke: #ffbe3c; stroke-width: 2; stroke-dasharray: 6 5; stroke-linecap: round; }
+.link circle { fill: #ffbe3c; }
+@media (max-width: 640px) { .stage { height: 72vh; } }
+.note { color: var(--muted); font-size: 0.72rem; margin: 10px 0 0; max-width: 64em; }
+.note a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="warn" id="warn" role="dialog" aria-modal="true" aria-labelledby="warn-t">
+  <div class="warn-box">
+    <div class="warn-t" id="warn-t">⚠️ 閲覧注意</div>
+    <p>このサイトは蠅の脳の分析・研究を目的としたサイトです。うんちと、それに群がる蠅（ハエ）が大きく映ります。音が出ます。</p>
+    <div class="ok"><button id="warn-ok">OK</button></div>
+  </div>
+</div>
+<main>
+  <div class="top">
+    <h1>うんちに群がる蠅</h1>
+    <div class="ctrl"><button id="btn-poop" aria-label="うんちを取りかえる" title="うんちを取りかえる">💩<span class="rf">↻</span></button>
+    <label class="count" title="蠅の数">
+      <select id="n-flies" aria-label="蠅の数">
+        <option value="1">🦟 1</option><option value="3">🦟 3</option><option value="5">🦟 5</option><option value="10" selected>🦟 10</option><option value="20">🦟 20</option>
+        <option value="30">🦟 30</option><option value="50">🦟 50</option><option value="75">🦟 75</option><option value="100">🦟 100</option>
+      </select></label></div>
+  </div>
+  <div class="stage" id="stage">
+    <canvas id="view" aria-label="うんちに群がる10匹の蠅"></canvas>
+    <div class="load" id="load">蠅を読み込んでいます…</div>
+    <svg class="link" id="link" style="display:none"><line class="halo"/><line class="dash"/><circle r="3.5"/></svg>
+    <div class="brain" id="brain" hidden>
+      <div class="hd"><span><b id="b-name">蠅</b> の脳</span><button class="x" id="b-close" aria-label="閉じる">×</button></div>
+      <canvas id="brainmap" aria-label="発火したニューロンの位置"></canvas>
+      <div class="pbar" id="b-pbar" hidden><i id="b-bar"></i></div>
+      <div class="now" id="b-now"></div>
+    </div>
+  </div>
+  <p class="note"><a href="/">🪰 ハエたたき（1分）</a> ・ <a href="/game/">うんち陣取り</a> ・ <a href="/game2/">ハエたたき対戦</a> ・ 体: <a href="https://github.com/NeLy-EPFL/flygym">flygym</a> NeuroMechFly ・ 脳: <a href="https://flywire.ai/">FlyWire</a> / <a href="https://github.com/philshiu/Drosophila_brain_model">Shiu et al.</a></p>
+</main>
+<script type="module" src="/test04/main.js?v=38"></script>
+</body>
+</html>

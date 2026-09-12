@@ -1,12 +1,13 @@
-// うんち陣取り — two players place droppings and the flies decide the winner.
+// ハエたたき — two players share one field of flies and swat at them; more kills in the time wins.
 //
 // The flies, their bodies (flygym's NeuroMechFly) and the droppings are the ones from the main
-// page; here they run on rules only (no brain worker), and every dropping keeps its own score:
-// how many flies sit on it, summed over time.
+// page; here they run on rules only (no brain worker). The droppings are only bait — what counts is
+// how many flies each player flattens before the clock runs out. A hand looming overhead sets off the
+// same escape response the flies already had, so the good ones get away.
 //
-// Two ways to play. On one phone the players take turns; online, the two devices talk through the
-// relay at /ws/ (nodejs/hae-game): the first one in the room hosts — it runs the whole field and
-// ships it over twelve times a second — and the other renders that and sends back only its taps.
+// Online, the two devices talk through the relay at /ws/ (nodejs/hae-game): the first one in the room
+// hosts — it runs the whole field and ships it over twelve times a second, and it alone decides who
+// was hit — and the other renders that and sends back only its swats.
 import * as THREE from '../test03/vendor/three.module.min.js';
 import { loadFlyData, FlyBody, CPG, LocoMap, LEGS } from '../test03/body3d.js?v=6';
 
@@ -14,6 +15,7 @@ const V = '?v=1';
 const SITE = new URL('../', import.meta.url);          // data paths work from / and from /test04/
 const at = (p) => new URL(p, SITE).href;
 const $ = (id) => document.getElementById(id);
+const on = (id, ev, fn) => { const el = $(id); if (el) el.addEventListener(ev, fn); };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -30,6 +32,20 @@ const TAU = Math.PI * 2;
 
 const N_FLIES = 30;               // before the match and after it: fixed, the players cannot change it
 const N_MATCH = 50;              // during the match itself
+const MODE = window.__HAE_MODE || 'vs';            // 'solo60' on the front page, 'vs' on /game2/
+const SOLO60 = MODE === 'solo60';
+const BEST_KEY = 'hae-tataki-best-60';
+const MATCH_TIME = SOLO60 ? 60 : 45;   // seconds of swatting
+const COUNT_IN = 3.2;            // the 3–2–1 before it
+const SWAT_HALF = 6.5;           // half the width of the head: everything under that square is caught at once
+const SWAT_FLEX = 2.2;           // how far the mesh can bend down around what it is resting on
+const SWAT_FALL = 0.17;          // seconds from the raised hand to the impact
+const SWAT_COOL = 0.5;           // and this long before that player can swing again
+const PIN_T = 0.34;              // it is held down and struggling for this long before anything is decided
+const P_FREE = 0.12;             // wriggles out from under the mesh, unhurt
+const P_HURT = 0.32;             // or lives, but broken: it has to be hit again
+const SWAT_H = 46;               // how high the hand starts
+const BAIT = [[-15, 7], [14, 11], [1, -16]];   // where the three droppings go: the same on both devices
 const TICK = 20;                 // ms of brain time per exchange with the worker
 const H = 0.002;                 // s, body step
 const WALK_Z = 1.12;             // thorax height above the ground while walking (flygym physics)
@@ -149,6 +165,7 @@ class Fly {
     const r = this.rule, d = this.drive;
     r.feedT -= dt; r.restT -= dt; r.groomT -= dt;
     if (this.airborne || this.state === 'land') return;
+    if (this.hurt) { if (this.state !== 'walk') this.setState('walk'); return; }
     if (this.startle && world.t >= this.startle.at) { this.takeoff('escape', this.startle.dir, 'rule'); this.startle = null; return; }
     const [mx, my] = this.mouth();
     if (this.state === 'feed') {
@@ -170,6 +187,7 @@ class Fly {
   rub() { this.setState('rub'); this.rubT = rnd(2, 5.5); this.rubHind = Math.random() < 0.2; }
 
   takeoff(mode, dir, by) {
+    if (this.hurt) return;                             // it has no wings left to do this with
     this.flight = {
       mode, by, dir, launched: false, t: 0, phase: 'cruise', course: dir, u: 0, saccade: false, segT: 0.2,
       U: mode === 'escape' ? rnd(240, 300) : rnd(140, 210), h: mode === 'escape' ? rnd(10, 22) : rnd(5, 16),
@@ -198,10 +216,11 @@ class Fly {
     W.jump = approach(W.jump, this.state === 'takeoff' && F.pushing ? 1 : 0, dt, 0.003);
     this.prob = approach(this.prob, this.state === 'feed' ? clamp(this.drive.MN9 / 55, 0.35, 1) : 0, dt, 0.08);
     if (this.state === 'groom') { this.groomPh += dt * TAU * 5.5; this.groomSlow += dt * TAU * 0.35; }
-    const flapping = this.state === 'flight' || this.state === 'landing' || (this.state === 'takeoff' && F.flapOn) || (this.state === 'held' && this.held.buzz);
+    const flapping = this.state === 'flight' || this.state === 'landing' || (this.state === 'takeoff' && F.flapOn)
+      || (this.state === 'held' && this.held.buzz) || (this.hurt && this.hurtBuzz);
     this.flap = approach(this.flap, flapping ? 1 : 0, dt, flapping ? 0.006 : 0.02);
     if (this.flap > 0.01) this.wingPh += dt * TAU * WINGBEAT;
-    const open = this.state === 'takeoff' ? F.wingsUp : this.state === 'held' ? this.held.buzz : this.airborne || (this.state === 'land' && this.stateT < 0.05);
+    const open = this.hurt ? true : this.state === 'takeoff' ? F.wingsUp : this.state === 'held' ? this.held.buzz : this.airborne || (this.state === 'land' && this.stateT < 0.05);
     this.wingOpen = approach(this.wingOpen, open ? 1 : 0, dt, open ? (F && F.mode === 'escape' ? 0.004 : 0.03) : 0.06);
     // spontaneous take-off (body default, not the brain)
     if (!this.remote && this.state === 'walk' && !this.leaving && world.t - this.lastFlightEnd > 6 && Math.random() < dt / 45) this.takeoff('voluntary', this.yaw + rnd(-0.4, 0.4), 'body');
@@ -243,6 +262,7 @@ class Fly {
   }
 
   groundStep(dt) {
+    if (this.hurt) return this.hurtStep(dt);
     let base = 0;
     if (this.state === 'walk') {
       if (this.pauseT > 0) this.pauseT -= dt; else if (Math.random() < dt / 5) this.pauseT = rnd(0.4, 2.2);
@@ -283,6 +303,29 @@ class Fly {
     if (this.state === 'land' && this.flight) vx += this.flight.u * Math.exp(-this.stateT / 0.03);
     this.x += (c * vx - s * v.vy * this.s) * dt; this.y += (s * vx + c * v.vy * this.s) * dt; this.yaw = wrap(this.yaw + v.wz * dt);
     this.speed = Math.abs(vx);
+  }
+
+  // knocked over and unable to fly: it buzzes its wings flat against the ground and skids along on its side
+  hurtStep(dt) {
+    const h = this.hb ??= { buzz: false, T: rnd(0.05, 0.3), dir: this.yaw, v: 0, dL: 0.2, dR: 0.2 };
+    if ((h.T -= dt) <= 0) {
+      h.buzz = !h.buzz;
+      h.T = h.buzz ? rnd(0.16, 0.5) : rnd(0.2, 0.7);
+      if (h.buzz) {
+        h.dir = wrap(h.dir + rnd(-1.7, 1.7));
+        h.v = rnd(16, 38);
+        h.dL = rnd(0.5, 1.4) * (Math.random() < 0.3 ? -1 : 1);
+        h.dR = rnd(0.5, 1.4) * (Math.random() < 0.3 ? -1 : 1);
+      }
+    }
+    this.hurtBuzz = h.buzz;
+    this.speed = approach(this.speed, h.buzz ? h.v : 0, dt, 0.06);
+    if (Math.hypot(this.x, this.y) > FIELD_R) h.dir = Math.atan2(-this.y, -this.x) + rnd(-0.5, 0.5);
+    this.x += Math.cos(h.dir) * this.speed * dt;
+    this.y += Math.sin(h.dir) * this.speed * dt;
+    this.yaw = wrap(this.yaw + wrap(h.dir - this.yaw) * Math.min(1, dt * 5));
+    this.dL = this.dR = 0;
+    this.cpg.step(dt * 2.2, h.dL, h.dR);               // legs scrabbling at nothing
   }
 
   pickWaypoint(minDist) {
@@ -447,8 +490,15 @@ class Fly {
       g.pitch += (clamp(sol[1], -0.7, 0.7) - g.pitch) * k; g.roll += (clamp(sol[2], -0.7, 0.7) - g.roll) * k;
       this.gOff = g.z - gc;
       }
-      const k2 = 1 - Math.exp(-Math.max(simDt, 1e-5) / (this.state === 'land' ? 0.025 : 0.01));
-      this.z += (g.z - this.z) * k2; this.pitch += (g.pitch - this.pitch) * k2; this.roll += (g.roll - this.roll) * k2;
+      const k2 = 1 - Math.exp(-Math.max(simDt, 1e-5) / (this.hurt ? 0.03 : this.state === 'land' ? 0.025 : 0.01));
+      if (this.hurt) {                                 // lying over on its side, pressed into the ground
+        const gc = groundZ(this.x, this.y);
+        this.z += (gc + 0.42 * this.s - this.z) * k2;
+        this.pitch += (0.22 * Math.sin(world.t * 11 + this.id) - this.pitch) * k2;
+        this.roll += (this.hurtRoll - this.roll) * k2;
+      } else {
+        this.z += (g.z - this.z) * k2; this.pitch += (g.pitch - this.pitch) * k2; this.roll += (g.roll - this.roll) * k2;
+      }
     }
     const root = body.root;
     root.position.set(this.x, this.y, this.z);
@@ -549,13 +599,17 @@ function crowd(dt) {
       if (d < 3.5 && Math.random() < dt * 3) f.startle = { at: world.t + rnd(0.005, 0.05), dir: Math.atan2(f.y - o.y, f.x - o.x) };
     }
   }
-  const h = world.hand;
-  if (h) for (const f of flies) {
-    if (f.airborne || f.startle) continue;
-    const dx = f.x - h.x, dy = f.y - h.y, dz = f.z - h.z, d = Math.hypot(dx, dy, dz) || 1;
-    const closing = (h.vx * dx + h.vy * dy + h.vz * dz) / d;               // mm/s toward the fly
-    const rate = (d < 18 && closing > 25 ? 30 : 0) + (d < 10 ? 10 : 0);
-    if (rate && Math.random() < dt * rate) f.startle = { at: world.t + rnd(0.0, 0.04), dir: Math.atan2(dy, dx) + rnd(-0.5, 0.5) };
+  // a hand coming down is a looming stimulus: the ones that spot it in time get away
+  for (const s of swats) {
+    if (s.hit) continue;
+    for (const f of flies) {
+      if (f.airborne || f.startle) continue;
+      const dx = f.x - s.x, dy = f.y - s.y, dz = f.z - s.z, d = Math.hypot(dx, dy, dz) || 1;
+      const closing = s.vz * dz / d;                                       // mm/s toward the fly
+      // this is rolled every 8 ms of the fall, so the rate has to stay low or nothing is ever caught
+      const rate = (d < 20 && closing > 25 ? 1.4 : 0) + (d < 11 ? 1.0 : 0);
+      if (rate && Math.random() < dt * rate) f.startle = { at: world.t + rnd(0.0, 0.04), dir: Math.atan2(dy, dx) + rnd(-0.5, 0.5) };
+    }
   }
 }
 
@@ -645,7 +699,6 @@ function dropPoop(x, y, owner, shape) {
   return p;
 }
 function clearPoops() {
-  for (const f of flies) f.onP = null;
   for (const p of poops) {
     for (const m of [p.mesh, p.stain, p.marker]) { if (!m) continue; scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
   }
@@ -811,19 +864,28 @@ const PLAYERS = [
   { name: '赤', css: '#e04b3c', hex: 0xe04b3c },
   { name: '青', css: '#2f74d0', hex: 0x2f74d0 },
 ];
-const POOPS_EACH = 3;                    // droppings per player
-const WATCH_TIME = 30;                   // seconds of watching after the last one is placed
-const game = { phase: 'intro', turn: 0, placed: [0, 0], left: WATCH_TIME, count: [0, 0] };
+const game = { phase: 'intro', left: MATCH_TIME, countIn: COUNT_IN, kills: [0, 0] };
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
 
 function startGame() {
-  clearPoops();
-  Object.assign(game, { phase: 'place', turn: 0, placed: [0, 0], left: WATCH_TIME, count: [0, 0] });
+  clearPoops(); clearCorpses(); clearSwats(); clearHitPops();
+  Object.assign(game, { phase: 'count', left: MATCH_TIME, countIn: COUNT_IN, kills: [0, 0], lastPip: 99 });
+  cool[0] = cool[1] = 0;
   wanted = N_FLIES;                      // fixed at 30 until the match starts
   started = true;                        // the flies start arriving
   $('result').hidden = true;
+  $('again').textContent = 'もう一度';
+  const shapes = [];
+  for (const [x, y] of BAIT) { const shp = makeLumps(); shapes.push({ lumps: shp.lumps, R: shp.R, noff: shp.noff }); dropPoop(x, y, 0, shp); }
   hud();
-  if (net.host) { net.send({ t: 'clear' }); netSendGame(); }
+  if (net.host) { net.send({ t: 'reset', shapes }); netSendGame(); }
+}
+function startMatch() {
+  game.phase = 'play';
+  game.endAt = performance.now() / 1000 + MATCH_TIME; game.left = MATCH_TIME;
+  wanted = N_MATCH;                      // the match itself is played with more flies
+  sfxStart();
+  if (net.host) netSendGame();
 }
 function groundTarget(cx, cy) {
   const r = view.getBoundingClientRect(), p = new THREE.Vector3();
@@ -840,115 +902,258 @@ function tapGround(cx, cy) {
   const q = groundTarget(cx, cy);
   if (q) tapWorld(q.x, q.y);
 }
-// a tap, in field coordinates: whose turn it is decides whether it lands here or travels
+// a tap, in field coordinates: your own hand comes down there
 function tapWorld(x, y) {
-  if (game.phase !== 'place') return false;
-  if (net.on) {
-    if (game.turn !== net.idx) { say('あいての番です'); return false; }
-    if (!net.host) { net.send({ t: 'place', x, y }); return true; }   // the host owns the field: ask it
-  }
-  return placeAt(x, y);
+  if (game.phase !== 'play') return false;
+  const by = net.on ? net.idx : 0;
+  if (!canSwat(by)) return false;
+  if (net.on && !net.host) { swat(x, y, by, true); net.send({ t: 'swat', x, y }); return true; }
+  return swat(x, y, by);
 }
-function placeAt(x, y, shape) {
-  if (game.phase !== 'place') return false;
-  if (Math.hypot(x, y) > PLACE_R) { say('フィールドの外には置けません'); return false; }
-  for (const p of poops) if (Math.hypot(p.x - x, p.y - y) < p.R + 6) { say('ほかのうんちに近すぎます'); return false; }
-  const shp = shape || makeLumps(), owner = game.turn;
-  addMarker(dropPoop(x, y, owner, shp));
-  if (net.host) net.send({ t: 'poop', x, y, owner, shape: { lumps: shp.lumps, R: shp.R, noff: shp.noff } });
-  game.placed[game.turn]++;
-  const other = 1 - game.turn;
-  if (game.placed[0] >= POOPS_EACH && game.placed[1] >= POOPS_EACH) startWatch();
-  else if (game.placed[other] < POOPS_EACH) game.turn = other;      // else the same player places again
-  hud();
-  if (net.host) netSendGame();
+
+// ------------------------------------------------------------------ the hand, and what it flattens
+const swats = [], corpses = [], cool = [0, 0];
+const CORPSE_MAX = 34;                           // the oldest are cleared away: each one is still a whole mesh
+// a real fly swatter: a square mesh head in a frame, on a handle going up to whoever is holding it.
+// All of it is one merged geometry, so a swing costs a single draw call and casts one latticed shadow.
+function mergeBoxes(boxes) {
+  const unit = new THREE.BoxGeometry(1, 1, 1);
+  const up = unit.attributes.position.array, un = unit.attributes.normal.array, ui = unit.index.array;
+  const pos = [], nor = [], idx = [];
+  const m = new THREE.Matrix4(), nm = new THREE.Matrix3(), sc = new THREE.Vector3(), v = new THREE.Vector3();
+  let base = 0;
+  for (const [w, h, d, x, y, z, ry] of boxes) {
+    m.makeRotationY(ry || 0); m.scale(sc.set(w, h, d)); m.setPosition(x, y, z);
+    nm.getNormalMatrix(m);
+    for (let k = 0; k < up.length; k += 3) {
+      v.set(up[k], up[k + 1], up[k + 2]).applyMatrix4(m); pos.push(v.x, v.y, v.z);
+      v.set(un[k], un[k + 1], un[k + 2]).applyMatrix3(nm).normalize(); nor.push(v.x, v.y, v.z);
+    }
+    for (const t of ui) idx.push(base + t);
+    base += up.length / 3;
+  }
+  unit.dispose();
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setIndex(idx);
+  return g;
+}
+const SWAT_BARS = [];            // the mesh bars, in the swatter's own frame: a fly between them may slip through
+let SWAT_INNER = 5, SWAT_STEP = 2;
+const swatGeo = (() => {
+  const HEAD = SWAT_HALF * 2, TH = 0.44, RIM = 0.92, N = 5, boxes = [];
+  const half = HEAD / 2, inner = half - RIM;
+  SWAT_INNER = inner;
+  // the square rim
+  boxes.push([HEAD, RIM, TH, 0, half - RIM / 2, 0], [HEAD, RIM, TH, 0, -half + RIM / 2, 0]);
+  boxes.push([RIM, HEAD - RIM * 2, TH, half - RIM / 2, 0, 0], [RIM, HEAD - RIM * 2, TH, -half + RIM / 2, 0, 0]);
+  // the mesh across it, both ways
+  const span = inner * 2, step = span / (N + 1);
+  SWAT_STEP = step;
+  for (let i = 1; i <= N; i++) {
+    const t = -inner + step * i;
+    SWAT_BARS.push(t);
+    boxes.push([span, 0.38, TH * 0.62, 0, t, 0]);         // running left to right
+    boxes.push([0.38, span, TH * 0.62, t, 0, 0]);         // and front to back
+  }
+  // the neck, then one handle leaning up out of it towards whoever is holding this
+  boxes.push([2.2, 1.0, TH, half + 1.0, 0, 0]);
+  const L = 17, phi = 0.5, x0 = half + 1.9, z0 = 0.1;
+  boxes.push([L, 0.9, 0.9, x0 + Math.cos(phi) * L / 2, 0, z0 + Math.sin(phi) * L / 2, -phi]);
+  boxes.push([2.2, 1.5, 1.5, x0 + Math.cos(phi) * (L - 0.8), 0, z0 + Math.sin(phi) * (L - 0.8), -phi]);
+  return mergeBoxes(boxes);
+})();
+const swatMat = PLAYERS.map((p) => new THREE.MeshStandardMaterial({ color: p.hex, roughness: 0.62, metalness: 0.05 }));
+const canSwat = (by) => game.phase === 'play' && world.t >= cool[by];
+// a dropping holds the head up: the highest point under the square is where the swing stops
+function restHeight(x, y, rot) {
+  const c = Math.cos(rot), sn = Math.sin(rot);
+  let h = 0;
+  for (let i = -3; i <= 3; i++) for (let j = -3; j <= 3; j++) {
+    const lx = i / 3 * SWAT_HALF, ly = j / 3 * SWAT_HALF;
+    const v = groundZ(x + lx * c - ly * sn, y + lx * sn + ly * c);
+    if (v > h) h = v;
+  }
+  return h;
+}
+// `quiet` = this hand is only being drawn (a guest's own optimistic swing, or the opponent's echo)
+function swat(x, y, by, quiet) {
+  if (!canSwat(by)) return false;
+  cool[by] = world.t + SWAT_COOL;
+  const m = new THREE.Mesh(swatGeo, swatMat[by]);
+  const rot = rnd(0, TAU);
+  m.rotation.z = rot;                              // it never comes down at quite the same angle
+  m.castShadow = true; m.renderOrder = 3;
+  m.position.set(x, y, SWAT_H); scene.add(m);
+  swats.push({ x, y, by, rot, rest: restHeight(x, y, rot), t: 0, z: SWAT_H, vz: 0, mesh: m, hit: false, done: false, pinned: [], quiet: !!quiet });
+  if (net.host) net.send({ t: 'swat', x, y, by });        // so the other screen sees it swing, not just land
   return true;
 }
-// everyone takes off once, so the count starts from an even spread
-function startWatch() {
-  game.phase = 'watch'; game.left = WATCH_TIME; game.endAt = performance.now() / 1000 + WATCH_TIME; game.count = [0, 0];
-  wanted = N_MATCH;                      // the match itself is played with more flies
-  sfxStart();
-  for (const f of flies) {
-    if (f.airborne) continue;
-    f.takeoff('voluntary', rnd(-Math.PI, Math.PI), 'body');
-    f.flight.T = rnd(0.4, 1.6);
-  }
-  say('スタート！ 多く集めた方が勝ち');
-}
-function addMarker(p) {
-  const m = new THREE.Mesh(new THREE.RingGeometry(p.R + 1.4, p.R + 2.6, 56),
-    new THREE.MeshBasicMaterial({ color: PLAYERS[p.owner].hex, transparent: true, opacity: 0.85, depthWrite: false }));
-  m.position.set(p.x, p.y, 0.06); m.renderOrder = 2; scene.add(m); p.marker = m;
-}
-// the dropping a fly counts towards: the nearest one whose ring it is standing inside
-function poopOf(f) {
-  if (f.airborne || f.leaving || f.state === 'held') return null;
-  let best = null, bd = 1e9;
-  for (const p of poops) {
-    if (p.z > 0.01) continue;
-    const d = Math.hypot(f.x - p.x, f.y - p.y);
-    if (d < p.R + 3.5 && d < bd) { bd = d; best = p; }
-  }
-  return best;
-}
-// a fly crossing into a ring flashes in that player's colour, so you can see the count move
-const starTex = (() => {
-  const c = document.createElement('canvas'); c.width = c.height = 128;
-  const g = c.getContext('2d'), R = 64;
-  const rad = g.createRadialGradient(R, R, 0, R, R, R);
-  rad.addColorStop(0, 'rgba(255,255,255,1)'); rad.addColorStop(0.18, 'rgba(255,255,255,0.85)');
-  rad.addColorStop(0.4, 'rgba(255,255,255,0.16)'); rad.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = rad; g.fillRect(0, 0, 128, 128);
-  g.strokeStyle = 'rgba(255,255,255,0.95)'; g.lineCap = 'round';
-  for (let k = 0; k < 4; k++) {                          // the four spikes of a キラン
-    const a = k * Math.PI / 2 + Math.PI / 4 * 0, L = k % 2 ? 46 : 60;
-    g.lineWidth = k % 2 ? 3 : 4.5;
-    g.beginPath(); g.moveTo(R, R); g.lineTo(R + Math.cos(a) * L, R + Math.sin(a) * L); g.stroke();
-  }
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
-})();
-const sparkles = [];
-function sparkle(x, y, z, hex) {
-  if (sparkles.length > 24) return;                      // a busy dropping should not turn into a strobe
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: starTex, color: hex, transparent: true,
-    depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, opacity: 1 }));
-  sp.position.set(x, y, z + 1.6); sp.scale.setScalar(0.5); sp.renderOrder = 5;
-  scene.add(sp); sparkles.push({ sp, t: 0 });
-}
-function stepSparkles(dt) {
-  for (let i = sparkles.length - 1; i >= 0; i--) {
-    const k = sparkles[i], u = (k.t += dt) / 0.5;
-    if (u >= 1) { scene.remove(k.sp); k.sp.material.dispose(); sparkles.splice(i, 1); continue; }
-    k.sp.scale.setScalar(9 * Math.sin(Math.min(1, u * 1.5) * Math.PI * 0.5) * (1 - 0.25 * u));
-    k.sp.material.opacity = u < 0.2 ? u / 0.2 : 1 - (u - 0.2) / 0.8;
-    k.sp.position.z += dt * 3;
-  }
-}
-// whose ring each fly just walked into — both devices run this, the count itself stays with the host
-function sparkleTick() {
-  for (const f of flies) {
-    const p = poopOf(f);
-    // a fly loitering on the rim would strobe, so each one flashes at most once every 0.6 s
-    if (p && p !== f.onP && world.t - (f.sparkT ?? -9) > 0.6) {
-      sparkle(f.x, f.y, f.z, PLAYERS[p.owner].hex);
-      f.sparkT = world.t;
+function stepSwats(dt) {
+  for (let i = swats.length - 1; i >= 0; i--) {
+    const s = swats[i];
+    s.t += dt;
+    const z0 = s.z, u = Math.min(1, s.t / SWAT_FALL);
+    s.z = s.t <= SWAT_FALL ? s.rest + (SWAT_H - s.rest) * (1 - u * u)   // accelerating down onto whatever is there
+      : s.t <= SWAT_FALL + PIN_T ? s.rest                               // resting on it while what is under it fights
+        : Math.min(SWAT_H, s.rest + (s.t - SWAT_FALL - PIN_T) * 170);   // then snatched back up
+    s.vz = (s.z - z0) / Math.max(dt, 1e-5);
+    s.mesh.position.z = s.z + 0.55;
+    const mine = !s.quiet && (!net.on || net.host);
+    if (!s.hit && s.t >= SWAT_FALL) {
+      s.hit = true;
+      sfxSlap();
+      if (mine) impactSwat(s);
     }
-    f.onP = p;
+    if (!s.done && s.t >= SWAT_FALL + PIN_T) { s.done = true; if (mine) finishSwat(s); }
+    if (s.t > SWAT_FALL + PIN_T + 0.4) { scene.remove(s.mesh); swats.splice(i, 1); }
   }
 }
-// how many flies are sitting on each dropping right now — that count is the score
-function scoreTick(dt) {
-  if (net.on && !net.host) { hud(); return; }          // the host keeps the count; we only draw it
-  if (game.phase === 'result') { hud(); return; }      // the tally at the whistle is the one that stands
-  for (const p of poops) p.count = 0;
-  for (const f of flies) {
-    const best = poopOf(f);
-    if (best) best.count++;
+// how much clear air there is around a point under the head: 0 right under a bar, 1 in the middle of a hole
+function gapAt(lx, ly) {
+  const near = (v) => {
+    if (Math.abs(v) > SWAT_INNER) return 0;            // out under the rim, where there is no hole at all
+    let d = 1e9;
+    for (const t of SWAT_BARS) d = Math.min(d, Math.abs(v - t));
+    return Math.min(1, d / (SWAT_STEP / 2));
+  };
+  return Math.min(near(lx), near(ly));
+}
+// only the host does this, so both devices agree on who got whom
+function impactSwat(s) {
+  const c = Math.cos(-s.rot), sn = Math.sin(-s.rot);
+  const d = s.dbg = { under: 0, gone: 0, outOfReach: 0, slipped: 0 };
+  for (let i = flies.length - 1; i >= 0; i--) {
+    const f = flies[i];
+    const dx = f.x - s.x, dy = f.y - s.y;
+    if (Math.hypot(dx, dy) > SWAT_HALF * 1.5 + f.s) continue;                 // cheap reject before the real test
+    const lx = dx * c - dy * sn, ly = dx * sn + dy * c, m = SWAT_HALF + f.s * 0.45;
+    if (Math.abs(lx) > m || Math.abs(ly) > m) continue;
+    d.under++;
+    if (f.airborne || f.leaving || f.state === 'held') { d.gone++; continue; }
+    // the head rests on the tallest thing under it; the mesh only bends so far, so a fly further
+    // down the slope (or on the flat beside a tall dropping) is out of its reach
+    if (groundZ(f.x, f.y) + 1.1 * f.s + SWAT_FLEX < s.rest) { d.outOfReach++; continue; }
+    // a fly that happens to be over one of the holes can dart up through the mesh — unless it is already broken
+    if (!f.hurt && Math.random() < clamp((0.04 + 0.3 * gapAt(lx, ly) ** 2) * (1.5 - 0.55 * f.s), 0, 0.5)) {
+      d.slipped++; slipAway(f, s); continue;
+    }
+    pinDown(f, s);
   }
-  game.count = [0, 0];
-  for (const p of poops) game.count[p.owner] += p.count;
-  if (game.phase === 'watch') {
+  if (s.pinned.length) sfxSquash(Math.min(3, s.pinned.length));
+}
+// pinned under the mesh: legs kicking, wings buzzing, going nowhere for the moment
+function pinDown(f, s) {
+  f.hold();
+  const h = f.held;
+  h.tx = f.x; h.ty = f.y; h.tz = groundZ(f.x, f.y) + 0.5 * f.s;
+  s.pinned.push(f);
+}
+// and now it is decided: dead, broken, or away
+function finishSwat(s) {
+  const got = [];
+  let escaped = 0, broke = 0;
+  for (const f of s.pinned) {
+    const i = flies.indexOf(f);
+    if (i < 0) continue;
+    if (f.hurt) { got.push(f.id); squash(f, i); continue; }   // a second hit finishes what the first started
+    const r = Math.random();
+    if (r < P_FREE) { freeFly(f, s); escaped++; }
+    else if (r < P_FREE + P_HURT) { cripple(f); broke++; }
+    else { got.push(f.id); squash(f, i); }
+  }
+  if (got.length) {
+    game.kills[s.by] += got.length;
+    sfxKill(got.length);
+    if (got.length > 1) hitPop(s.x, s.y, s.rest, got.length, s.by);
+  }
+  if (net.host && got.length) net.send({ t: 'hit', got, x: +s.x.toFixed(1), y: +s.y.toFixed(1), z: +s.rest.toFixed(1), by: s.by });
+  if (escaped) sfxEscape();
+  if (broke) sfxHurt();
+  hud();
+}
+function slipAway(f, s) {
+  f.startle = null;
+  f.takeoff('escape', Math.atan2(f.y - s.y, f.x - s.x) + rnd(-0.8, 0.8), 'rule');
+  if (f.flight) { f.flight.T = rnd(0.5, 1.3); f.flight.launched = true; }
+  sfxEscape();
+}
+function freeFly(f, s) {
+  f.release(rnd(-60, 60) + (f.x - s.x) * 12, rnd(-60, 60) + (f.y - s.y) * 12);
+}
+// alive, but it will not be flying anywhere: it drags itself along until someone finishes it
+function cripple(f) {
+  f.held = null; f.flight = null; f.startle = null;
+  f.setState('walk');
+  f.hurt = true;
+  hurtLook(f);
+}
+function hurtLook(f) {
+  f.hurt = true;
+  f.wingOpen = 1; f.hurtBuzz = true;                   // wings out, and shivering
+  const r = mulberry32(f.id * 7919 | 0);
+  f.hurtRoll = (r() < 0.5 ? -1 : 1) * (1.0 + r() * 0.45);      // right over onto one side
+  f.body.root.scale.set(f.s * 1.06, f.s * 1.06, f.s * 0.72);
+}
+// flattened where it stood, turned over on its back, legs curled in — and left there
+function squash(f, i) {
+  flies.splice(i, 1); net.byId.delete(f.id);
+  f.state = 'dead'; f.remote = false; f.flight = null;
+  const b = f.body;
+  for (const leg of LEGS) b.setLeg(leg, FIXED_POSES[leg].tuck);   // legs drawn up the way a dead fly's are
+  b.update();
+  for (const w of b.wings) { w.obj.quaternion.copy(w.wing.qRest); for (const g of w.wing.ghosts) g.visible = false; }
+  for (const m of b.microchaetae) m.visible = false;
+  b.root.position.set(f.x, f.y, groundZ(f.x, f.y) + 0.22 * f.s);
+  _qa.setFromAxisAngle(AZ, f.yaw + rnd(-0.35, 0.35));
+  _qc.setFromAxisAngle(AX, Math.PI + rnd(-0.3, 0.3));             // over it goes
+  b.root.quaternion.copy(_qa).multiply(_qc);
+  b.root.scale.set(f.s * 1.16, f.s * 1.16, f.s * 0.3);            // and squashed flat
+  corpses.push(f);
+  while (corpses.length > CORPSE_MAX) { const o = corpses.shift(); scene.remove(o.body.root, o.body.skin); }
+}
+function clearCorpses() { for (const f of corpses) scene.remove(f.body.root, f.body.skin); corpses.length = 0; }
+// when a swing takes more than one, the number pops where it happened
+const hitPops = [];
+function hitPop(x, y, z, k, by) {
+  const el = document.createElement('div');
+  el.className = 'hitpop';
+  el.style.color = PLAYERS[by] ? PLAYERS[by].css : '';
+  el.textContent = '+' + k;
+  stage.appendChild(el);
+  hitPops.push({ el, x, y, z: z + 2.5, t: 0 });
+}
+function stepHitPops(dt) {
+  if (!hitPops.length) return;
+  const w = view.clientWidth, h = view.clientHeight;
+  for (let i = hitPops.length - 1; i >= 0; i--) {
+    const p = hitPops[i], u = (p.t += dt) / 0.95;
+    if (u >= 1) { p.el.remove(); hitPops.splice(i, 1); continue; }
+    _v3.set(p.x, p.y, p.z).project(camera);
+    p.el.style.left = (_v3.x + 1) / 2 * w + 'px';
+    p.el.style.top = (1 - _v3.y) / 2 * h + 'px';
+    p.el.style.transform = `translate(-50%, ${-8 - 38 * u}px) scale(${1 + 0.5 * Math.min(1, u * 6) - 0.35 * u})`;
+    p.el.style.opacity = String(u < 0.1 ? u / 0.1 : 1 - (u - 0.1) / 0.9);
+  }
+}
+function clearHitPops() { for (const p of hitPops) p.el.remove(); hitPops.length = 0; }
+function clearSwats() {
+  for (const s of swats) {
+    scene.remove(s.mesh);
+    for (const f of s.pinned) if (f.state === 'held' && flies.includes(f)) f.release(0, 0);
+  }
+  swats.length = 0;
+}
+// the clock: a 3–2–1, then the match, then it is over. The kills themselves are counted as they happen.
+function scoreTick(dt) {
+  if (net.on && !net.host) { hud(); return; }          // the host runs the clock; we only draw it
+  if (game.phase === 'count') {
+    game.countIn -= dt;
+    const pip = Math.ceil(game.countIn);
+    if (pip !== game.lastPip) { game.lastPip = pip; if (pip > 0) sfxPip(); }
+    if (game.countIn <= 0) startMatch();
+  } else if (game.phase === 'play') {
     game.left = game.endAt - performance.now() / 1000;
     if (game.left <= 0) endGame();
   }
@@ -957,12 +1162,25 @@ function scoreTick(dt) {
 function endGame() {
   game.phase = 'result'; game.left = 0;
   wanted = N_FLIES;                      // back to the fixed 30 once it is over
+  clearSwats();
   showResult();
   sfxResult();
   if (net.host) netSendGame();
 }
 function showResult() {
-  const [a, b] = game.count, win = a === b ? -1 : a > b ? 0 : 1;
+  const [a, b] = game.kills, win = a === b ? -1 : a > b ? 0 : 1;
+  if (solo) {
+    const best = Math.max(a, bestScore());
+    try { localStorage.setItem(BEST_KEY, String(best)); } catch { /* private window */ }
+    $('r-title').textContent = `${a}匹`;
+    $('r-title').style.color = PLAYERS[0].css;
+    const grade = a >= 30 ? 'みごとな手さばき' : a >= 18 ? 'なかなかの腕' : a >= 8 ? 'まずまず' : '逃げられましたね';
+    $('r-score').innerHTML = `${grade}<br><span class="best">自己ベスト ${best}匹${a >= best && a > 0 ? '（更新！）' : ''}</span>`;
+    if ($('share')) $('share').hidden = false;
+    $('result').hidden = false;
+    return;
+  }
+  if ($('share')) $('share').hidden = true;
   const me = net.on ? (win === net.idx ? 'あなたの勝ち' : win < 0 ? '引き分け' : 'あなたの負け') : null;
   $('r-title').textContent = me || (win < 0 ? '引き分け' : `${PLAYERS[win].name}の勝ち`);
   $('r-title').style.color = win < 0 ? '' : PLAYERS[win].css;
@@ -970,28 +1188,24 @@ function showResult() {
   $('result').hidden = false;
 }
 function hud() {
-  $('s0').textContent = game.count[0]; $('s1').textContent = game.count[1];
-  const t = $('turn');
-  const ck = $('clock'), mine = net.on && game.turn === net.idx;
-  if (game.phase === 'place') {
-    const who = net.on ? (mine ? 'あなた' : 'あいて') : PLAYERS[game.turn].name;
-    t.innerHTML = `<b style="color:${PLAYERS[game.turn].css}">${who}</b>の番 — タップで設置（のこり${POOPS_EACH - game.placed[game.turn]}個）`;
-    ck.textContent = `${game.placed[0] + game.placed[1]} / ${POOPS_EACH * 2}`;
-  } else if (game.phase === 'watch') {
-    t.textContent = '見守るだけ — 終了時に多く集めていた方の勝ち';
+  $('s0').textContent = game.kills[0]; $('s1').textContent = game.kills[1];
+  const t = $('turn'), ck = $('clock');
+  if (game.phase === 'count') {
+    t.textContent = 'まもなく開始 — 蠅をねらってタップ';
+    ck.textContent = String(Math.max(1, Math.ceil(game.countIn)));
+  } else if (game.phase === 'play') {
+    t.textContent = 'タップで叩く — 気づかれると逃げられます';
     ck.textContent = `のこり ${Math.ceil(Math.max(0, game.left))}`;
   } else if (game.phase === 'result') { t.textContent = '終了'; ck.textContent = '終了'; }
   else { t.textContent = ''; ck.textContent = ''; }
-  $('p0').classList.toggle('active', game.phase === 'place' && game.turn === 0);
-  $('p1').classList.toggle('active', game.phase === 'place' && game.turn === 1);
   popCount();
 }
-// flies arriving and leaving, as a +1 / −2 that floats up out of the number
+// each kill as a +1 / +3 that floats up out of the number
 let lastCount = [0, 0], lastPhase = '';
 function popCount() {
-  if (game.phase !== lastPhase) { lastPhase = game.phase; lastCount = game.count.slice(); return; }
+  if (game.phase !== lastPhase) { lastPhase = game.phase; lastCount = game.kills.slice(); return; }
   for (let i = 0; i < 2; i++) {
-    const d = game.count[i] - lastCount[i];
+    const d = game.kills[i] - lastCount[i];
     if (!d) continue;
     const el = document.createElement('span');
     el.className = 'pop ' + (d > 0 ? 'up' : 'dn');
@@ -999,9 +1213,9 @@ function popCount() {
     $('p' + i).appendChild(el);
     el.addEventListener('animationend', () => el.remove());
   }
-  lastCount = game.count.slice();
+  lastCount = game.kills.slice();
 }
-$('again').addEventListener('click', () => {
+on('again', 'click', () => {
   if (net.walkover) { net.walkover = false; $('again').textContent = 'もう一度'; return backToLobby(''); }
   if (net.on && !net.host) { net.send({ t: 'again' }); say('あいてを待っています…'); return; }
   startGame();
@@ -1022,8 +1236,14 @@ function addFly() {                          // a newcomer flies in from outside
 function removeFly() {                       // someone flies off and away
   const left = staying();
   if (left.length <= 1) return;
-  const f = [...left].reverse().find((o) => o.state !== 'held');
-  if (!f) return;
+  const f = [...left].reverse().find((o) => o.state !== 'held' && !o.hurt);
+  if (!f) {                                  // only broken ones left: they simply crawl out of the picture
+    const h = [...left].reverse().find((o) => o.hurt);
+    if (!h) return;
+    const i = flies.indexOf(h);
+    if (i >= 0) { scene.remove(h.body.root, h.body.skin); flies.splice(i, 1); net.byId.delete(h.id); }
+    return;
+  }
   f.leaving = true;
   if (!f.airborne) f.takeoff('voluntary', Math.atan2(f.y, f.x) + rnd(-0.5, 0.5), 'body');
   Object.assign(f.flight, { phase: 'leave', reach: false, final: false, saccade: true, wp: { x: Math.cos(Math.atan2(f.y, f.x)) * 140, y: Math.sin(Math.atan2(f.y, f.x)) * 140 }, U: 220, h: 22 });
@@ -1128,6 +1348,42 @@ function sfxLose() {                               // 負け — the same shape,
   [392, 349.2, 311.1, 261.6].forEach((f, i) => tone(f, f, t + i * 0.14, 0.22, 'sawtooth', 0.2, 1200));
   tone(261.6, 196, t + 0.58, 0.7, 'sawtooth', 0.2, 900);
 }
+function sfxPip() {                                 // 3…2…1
+  const ctx = audio.ctx; if (!ctx) return;
+  tone(880, 880, ctx.currentTime + 0.01, 0.09, 'triangle', 0.26);
+}
+function sfxSlap() {                               // the hand hitting the ground: a dry, flat smack
+  const ctx = audio.ctx; if (!ctx) return;
+  const t = ctx.currentTime + 0.01, n = Math.floor(ctx.sampleRate * 0.07);
+  const b = ctx.createBuffer(1, n, ctx.sampleRate), d = b.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.011));
+  const src = ctx.createBufferSource(); src.buffer = b;
+  const bp = ctx.createBiquadFilter(), g = ctx.createGain();
+  bp.type = 'bandpass'; bp.frequency.value = 1500; bp.Q.value = 0.8; g.gain.value = 0.5;
+  src.connect(bp); bp.connect(g); g.connect(ctx.destination); src.start(t);
+  tone(150, 60, t, 0.09, 'sine', 0.35);
+}
+function sfxSquash(k) {                            // something is under there, thrashing
+  const ctx = audio.ctx; if (!ctx) return;
+  const t = ctx.currentTime + 0.03;
+  tone(620 + 70 * Math.min(k, 5), 420, t, 0.1, 'square', 0.15, 2200);
+}
+function sfxKill(k) {                             // and the wet little pop when it stops
+  const ctx = audio.ctx; if (!ctx) return;
+  const t = ctx.currentTime + 0.02;
+  tone(520 + 60 * Math.min(k, 5), 170, t, 0.14, 'square', 0.24, 2000);
+  tone(260, 100, t + 0.02, 0.18, 'sawtooth', 0.18, 800);
+}
+function sfxEscape() {                            // a thin rising whip: that one got away
+  const ctx = audio.ctx; if (!ctx) return;
+  const t = ctx.currentTime + 0.01;
+  tone(700, 1750, t, 0.14, 'triangle', 0.14, 5000);
+}
+function sfxHurt() {                              // a sagging note: still alive, but only just
+  const ctx = audio.ctx; if (!ctx) return;
+  const t = ctx.currentTime + 0.02;
+  tone(430, 250, t, 0.22, 'sawtooth', 0.17, 1100);
+}
 function sfxDraw() {                               // 引き分け — two flat notes, neither way
   const ctx = audio.ctx; if (!ctx) return;
   const t = ctx.currentTime + 0.02;
@@ -1136,7 +1392,8 @@ function sfxDraw() {                               // 引き分け — two flat 
 }
 // 終了！ — whoever it went to decides which of the three plays
 function sfxResult() {
-  const [a, b] = game.count, win = a === b ? -1 : a > b ? 0 : 1;
+  if (solo) return sfxWin();
+  const [a, b] = game.kills, win = a === b ? -1 : a > b ? 0 : 1;
   if (win < 0) return sfxDraw();
   if (net.on) return win === net.idx ? sfxWin() : sfxLose();
   sfxWin();                                        // one phone: someone won, and they are both here
@@ -1167,21 +1424,25 @@ function beginPlay() {
   resize();
 }
 function showWaiting() {
+  if (!$('lobby-wait')) return;
   $('lobby-menu').hidden = true;
   $('lobby-wait').hidden = false;
   netStatus('あいてを探しています', true);
 }
-$('btn-local').addEventListener('click', () => {
+on('btn-local', 'click', () => {
+  solo = true;
+  document.body.classList.add('solo');
   beginPlay();
   startGame();
 });
-$('btn-online').addEventListener('click', () => {
+on('btn-online', 'click', () => {
   startAudio();
   $('lobby-menu').hidden = true;
   $('lobby-wait').hidden = false;
   netStart('');                                    // whoever is waiting: no code to agree on first
 });
-$('btn-back').addEventListener('click', () => backToLobby(''));
+on('btn-back', 'click', () => backToLobby(''));
+on('share', 'click', shareResult);
 // the opponent dropped in the middle of a match: tell them, and hand them the win
 function walkover() {
   game.phase = 'result'; game.left = 0; wanted = N_FLIES;
@@ -1198,6 +1459,8 @@ function walkover() {
 }
 // back to the first screen: after a cancel, an opponent leaving, or the line going down
 function backToLobby(msg) {
+  if (SOLO60) return;                              // the front page has nowhere else to go
+  solo = false; document.body.classList.remove('solo');
   if (net.ws) { try { net.ws.close(); } catch { /* already gone */ } net.ws = null; }
   net.on = false; net.host = false; net.idx = -1; net.byId.clear();
   $('result').hidden = true;
@@ -1206,6 +1469,8 @@ function backToLobby(msg) {
   netStatus(msg || '');
 }
 
+let solo = SOLO60;                                 // playing alone: only the red side is on screen
+if (SOLO60) document.body.classList.add('solo');
 // ------------------------------------------------------------------ online: the host runs the field, the guest draws it
 // One binary frame per snapshot (Float32: a header count, then 11 numbers per fly), and small JSON
 // messages for everything that happens once — a dropping, the score, the end of the match.
@@ -1221,7 +1486,7 @@ const net = {
 let snapBuf = null;
 
 function netSendGame() {
-  net.send({ t: 'g', ph: game.phase, tn: game.turn, pl: game.placed.slice(), ct: game.count.slice(), lf: Math.max(0, game.left) });
+  net.send({ t: 'g', ph: game.phase, ki: game.kills.slice(), lf: Math.max(0, game.left), ci: game.countIn });
 }
 function netSendSnapshot() {
   const n = flies.length, need = 1 + n * PER;
@@ -1232,9 +1497,10 @@ function netSendSnapshot() {
     const F = f.flight;
     let bits = 0;
     if (F) { if (F.launched) bits |= 1; if (F.reach) bits |= 2; if (F.pushing) bits |= 4; if (F.flapOn) bits |= 8; if (F.wingsUp) bits |= 16; if (F.mode === 'escape') bits |= 32; }
-    if (f.held && f.held.buzz) bits |= 64;
+    if ((f.held && f.held.buzz) || (f.hurt && f.hurtBuzz)) bits |= 64;
     if (f.rubHind) bits |= 128;
     if (f.leaving) bits |= 256;
+    if (f.hurt) bits |= 512;
     a[o] = f.id; a[o + 1] = STI[f.state] ?? 0; a[o + 2] = bits;
     a[o + 3] = f.x; a[o + 4] = f.y; a[o + 5] = f.z;
     a[o + 6] = f.yaw; a[o + 7] = f.pitch; a[o + 8] = f.roll;
@@ -1267,7 +1533,8 @@ function netApplySnapshot(buf) {
     if (f.state !== st) { f.state = st; f.stateT = 0; }
     F.launched = !!(bits & 1); F.reach = !!(bits & 2); F.pushing = !!(bits & 4);
     F.flapOn = !!(bits & 8); F.wingsUp = !!(bits & 16); F.mode = bits & 32 ? 'escape' : 'voluntary';
-    f.held.buzz = !!(bits & 64); f.rubHind = !!(bits & 128); f.leaving = !!(bits & 256);
+    f.held.buzz = f.hurtBuzz = !!(bits & 64); f.rubHind = !!(bits & 128); f.leaving = !!(bits & 256);
+    if (bits & 512 && !f.hurt) hurtLook(f);
     const t = f.net;
     t.x = a[o + 3]; t.y = a[o + 4]; t.z = a[o + 5]; t.yaw = a[o + 6]; t.pitch = a[o + 7]; t.roll = a[o + 8];
     f.dL = a[o + 9]; f.dR = a[o + 10];
@@ -1279,25 +1546,34 @@ function netApplySnapshot(buf) {
   }
 }
 function netMessage(m) {
-  if (m.t === 'poop') {                                   // the host dropped one: build the same shape here
-    game.turn = m.owner;
-    addMarker(dropPoop(m.x, m.y, m.owner, m.shape));
-    started = true;
-  } else if (m.t === 'clear') {
-    clearPoops(); $('result').hidden = true; started = true;
+  if (m.t === 'reset') {                                  // the host laid out the bait: build the same three
+    clearPoops(); clearCorpses(); clearSwats(); clearHitPops();
+    for (const [i, [x, y]] of BAIT.entries()) dropPoop(x, y, 0, m.shapes[i]);
+    $('result').hidden = true; $('again').textContent = 'もう一度'; started = true;
   } else if (m.t === 'g') {
     const was = game.phase;
-    game.phase = m.ph; game.turn = m.tn; game.placed = m.pl; game.count = m.ct; game.left = m.lf;
+    game.phase = m.ph; game.kills = m.ki; game.left = m.lf; game.countIn = m.ci;
     if (game.phase !== was) {
-      if (game.phase === 'result') { wanted = N_FLIES; showResult(); sfxResult(); }
+      if (game.phase === 'result') { wanted = N_FLIES; clearSwats(); showResult(); sfxResult(); }
       else {
         $('result').hidden = true;
-        if (game.phase === 'watch') { wanted = N_MATCH; sfxStart(); }
+        if (game.phase === 'play') { wanted = N_MATCH; sfxStart(); }
       }
+    } else if (game.phase === 'count') {
+      const pip = Math.ceil(game.countIn);
+      if (pip !== game.lastPip) { game.lastPip = pip; if (pip > 0) sfxPip(); }
     }
     hud();
-  } else if (m.t === 'place') {                           // the guest asked to place one
-    if (net.host && game.phase === 'place' && game.turn === 1) placeAt(m.x, m.y);
+  } else if (m.t === 'swat') {
+    if (net.host) { swat(m.x, m.y, 1); return; }           // the guest swung: resolve it here
+    if (m.by !== net.idx) swat(m.x, m.y, m.by, true);      // the opponent's hand, for us to watch
+  } else if (m.t === 'hit') {                              // which flies the host's swing caught
+    for (const id of m.got) {
+      const f = net.byId.get(id), i = flies.indexOf(f);
+      if (f && i >= 0) squash(f, i);
+    }
+    if (m.got.length) sfxKill(m.got.length);
+    if (m.got.length > 1) hitPop(m.x, m.y, m.z, m.got.length, m.by);
   } else if (m.t === 'again') {
     if (net.host) startGame();
   }
@@ -1314,7 +1590,7 @@ function netStart(room) {
   try { ws = new WebSocket(url); } catch { return netStatus('接続できませんでした'); }
   net.ws = ws;
   ws.binaryType = 'arraybuffer';
-  ws.onopen = () => { net.send({ t: 'join', room: net.room }); };
+  ws.onopen = () => { net.send({ t: 'join', room: net.room, game: 'tataki' }); };
   ws.onmessage = (ev) => {
     if (typeof ev.data !== 'string') return netApplySnapshot(ev.data);
     let m = null;
@@ -1340,6 +1616,21 @@ function netStart(room) {
   ws.onerror = () => netStatus('接続できませんでした');
 }
 
+// ------------------------------------------------------------------ your best, and posting it
+function bestScore() {
+  try { return Number(localStorage.getItem(BEST_KEY)) || 0; } catch { return 0; }
+}
+function shareResult() {
+  const a = game.kills[0];
+  const text = `ハエたたき：1分で ${a}匹 たたきました。\n#ハエたたき`;
+  const url = 'https://hae.satoru.net/';
+  if (navigator.share) {
+    navigator.share({ title: 'ハエたたき', text, url }).catch(() => { /* the sheet was dismissed */ });
+    return;
+  }
+  window.open('https://twitter.com/intent/tweet?text=' + encodeURIComponent(text + '\n' + url), '_blank', 'noopener');
+}
+
 // ------------------------------------------------------------------ main loop
 let last = performance.now(), acc = 0, stepN = 0, frameN = 0, scoreAcc = 0;
 const stats = { step: 0, pose: 0, render: 0, sim: 0, frames: 0 };
@@ -1353,7 +1644,7 @@ function frame(now) {
       acc -= H; simDt += H; world.t += H;
       for (const f of flies) f.step(H);
       if (Math.round(world.t * 1000) % 20 === 0) for (const f of flies) if (!f.remote) f.decideRule(0.02);
-      if (++stepN % 4 === 0) { crowd(4 * H); dropGone(); balance(4 * H); }
+      if (++stepN % 4 === 0) { stepSwats(4 * H); crowd(4 * H); dropGone(); balance(4 * H); }
       const h = world.hand;
       if (h) {
         const k = 1 - Math.exp(-H / 0.03), ox = h.x, oy = h.y, oz = h.z;
@@ -1366,8 +1657,6 @@ function frame(now) {
     const t1 = performance.now();
     stepPoops(dtReal);
     if ((scoreAcc += wall) >= 0.2) { scoreTick(scoreAcc); scoreAcc = 0; if (net.host) netSendGame(); }
-    if (game.phase === 'place' || game.phase === 'watch') sparkleTick();
-    stepSparkles(dtReal);
     if (net.host && (net.sendT -= dtReal) <= 0) { net.sendT = 1 / SNAP_HZ; netSendSnapshot(); }
     const blur = clamp((WINGBEAT * simDt - 0.15) / 0.35, 0, 1);
     const many = flies.length > 30; frameN++;
@@ -1376,6 +1665,7 @@ function frame(now) {
     const h = world.hand; handMesh.visible = !!h;
     if (h) { handMesh.position.set(h.x, h.y, h.z); if (Math.hypot(h.vx, h.vy) > 20) handMesh.rotation.z = Math.atan2(h.vy, h.vx); }
     updateAudio();
+    stepHitPops(dtReal);
     for (const f of flies) for (const m of f.body.microchaetae) m.visible = cam.dist < 30;
     placeCamera();
     renderer.render(scene, camera);
@@ -1401,5 +1691,5 @@ resize();
     $('load').textContent = '読み込みに失敗しました: ' + (err && err.message || err);
   }
 })();
-window.__game = { world, flies, cam, stats, renderer, audio, game, poops, net, startGame, placeAt, tapWorld, endGame, beginPlay, project: (f) => new THREE.Vector3(f.x, f.y, f.z).project(camera).toArray() };
+window.__game = { world, flies, cam, stats, renderer, audio, game, poops, net, swats, corpses, startGame, swat, tapWorld, endGame, beginPlay, gapAt, cripple, project: (f) => new THREE.Vector3(f.x, f.y, f.z).project(camera).toArray() };
 requestAnimationFrame(frame);

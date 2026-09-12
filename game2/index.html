@@ -3,22 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<title>ハエたたき — 1分で何匹たたけるか</title>
-<meta name="description" content="1分で何匹たたけるか。蠅は本物のショウジョウバエの体（NeuroMechFly）で動き、迫る手に気づくと逃げます。結果はそのままシェアできます。">
+<title>ハエたたき — 時間内に多く潰した方の勝ち</title>
+<meta name="description" content="スマホで1対1のハエたたき。45秒で多く潰した方の勝ち。蠅は本物のショウジョウバエの体（NeuroMechFly）で、迫る手に気づくと逃げます。">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A6%9F%3C/text%3E%3C/svg%3E">
 <meta name="theme-color" content="#0d0d0d">
 <meta name="mobile-web-app-capable" content="yes">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="hae.satoru.net">
 <meta property="og:locale" content="ja_JP">
-<meta property="og:url" content="https://hae.satoru.net/">
-<link rel="canonical" href="https://hae.satoru.net/">
-<meta property="og:title" content="ハエたたき — 1分で何匹たたけるか">
-<meta property="og:description" content="1分で何匹たたけるか。気づかれると逃げられます。">
+<meta property="og:url" content="https://hae.satoru.net/game2/">
+<meta property="og:title" content="ハエたたき — 時間内に多く潰した方の勝ち">
+<meta property="og:description" content="スマホで1対1。45秒で多く潰した方の勝ち。">
 <meta property="og:image" content="https://hae.satoru.net/og.jpg">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="ハエたたき — 1分で何匹たたけるか">
-<meta name="twitter:description" content="1分で何匹たたけるか。気づかれると逃げられます。">
+<meta name="twitter:title" content="ハエたたき — 時間内に多く潰した方の勝ち">
+<meta name="twitter:description" content="スマホで1対1。45秒で多く潰した方の勝ち。">
 <meta name="twitter:image" content="https://hae.satoru.net/og.jpg">
 <style>
 /* 画面はスマホ縦持ちが基準。1画面に収めきり、ページ自体はスクロールしない */
@@ -104,10 +103,6 @@ body.solo .p1 { display: none; }
 #r-score { font-size: 1.05rem; margin: 10px 0 18px; font-variant-numeric: tabular-nums; }
 #r-score .vs { color: var(--muted); }
 #again { width: 100%; min-height: 52px; font-size: 1.02rem; font-weight: 700; background: var(--accent); color: #191918; border: 0; }
-#share { width: 100%; min-height: 50px; margin-top: 9px; font-size: 0.98rem; font-weight: 700; }
-#share[hidden] { display: none; }
-#r-score .best { font-size: 0.86rem; color: var(--ink-2); }
-#r-title { font-size: 2.6rem; }
 
 /* ---------------------------------------------------------------- ロビー（最初の画面） */
 .lobby { position: fixed; inset: 0; z-index: 10; background: #0b0b0b; overflow-y: auto; -webkit-overflow-scrolling: touch; }
@@ -167,7 +162,6 @@ body.solo .p1 { display: none; }
         <div id="r-title"></div>
         <div id="r-score"></div>
         <button id="again">もう一度</button>
-        <button id="share" hidden>結果をシェア</button>
       </div>
     </div>
   </div>
@@ -181,24 +175,34 @@ body.solo .p1 { display: none; }
       <div class="warn-t">⚠️ 閲覧注意</div>
       <p>蠅の脳の研究サイトです。うんちと、それに群がる蠅が大きく映ります。音が出ます。</p>
 
-      <h2>ハエたたき — 1分</h2>
+      <h2>ハエたたき — 1対1</h2>
       <ol class="rules">
         <li>3・2・1 で開始。うんちに集まった蠅が <b>50匹</b> になります</li>
         <li>蠅をねらって<b>タップ</b>すると手が落ちてきて、その場にいた蠅を潰します</li>
-        <li><b>1分</b>で何匹たたけるか。同じ手は約0.5秒に1回まで</li>
+        <li><b>45秒</b>で多く潰した方の勝ち。同じ手は約0.5秒に1回まで</li>
       </ol>
-      <p>手が迫ると蠅は<b>気づいて逃げます</b>（本物のショウジョウバエの逃避反応と同じしくみ）。指でなぞると視点だけ動きます。</p>
+      <p>手が迫ると蠅は<b>気づいて逃げます</b>（本物の逃避反応と同じしくみ）。指でなぞると視点だけ動きます。</p>
 
       <div class="acts">
-        <button class="primary" id="btn-local">はじめる</button>
+        <button class="primary" id="btn-online">だれかと対戦する</button>
+        <button id="btn-local">ひとりで練習</button>
       </div>
-      <p class="note">体: <a href="https://github.com/NeLy-EPFL/flygym">flygym</a> NeuroMechFly ・ 脳: <a href="https://flywire.ai/">FlyWire</a> / <a href="https://github.com/philshiu/Drosophila_brain_model">Shiu et al.</a><br><a href="/game2/">🎮 ハエたたき 1対1</a> ・ <a href="/game/">うんち陣取り</a> ・ <a href="/kansatsu/">蠅観察（1匹の脳を見る）</a></p>
+      <p class="note">体: <a href="https://github.com/NeLy-EPFL/flygym">flygym</a> NeuroMechFly ・ 脳: <a href="https://flywire.ai/">FlyWire</a> / <a href="https://github.com/philshiu/Drosophila_brain_model">Shiu et al.</a><br><a href="/">🪰 ハエたたき（1分）</a> ・ <a href="/game/">うんち陣取り</a> ・ <a href="/kansatsu/">蠅観察</a></p>
+    </div>
+
+    <div id="lobby-wait" hidden>
+      <div class="hero">🦟</div>
+      <h2>あいてを探しています</h2>
+      <p>いま遊んでいる人と自動でつながります。相手が見つかると<b>赤（先手）</b>か<b>青（後手）</b>が決まって、すぐ始まります。</p>
+      <div id="lobby-status"></div>
+      <div class="acts">
+        <button class="sub" id="btn-back">やめる</button>
+      </div>
     </div>
 
   </div>
 </div>
 
-<script>window.__HAE_MODE = 'solo60';</script>
-<script type="module" src="/game2/game.js?v=12"></script>
+<script type="module" src="game.js?v=12"></script>
 </body>
 </html>
