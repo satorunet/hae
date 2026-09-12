@@ -55,6 +55,23 @@
   .bar span{position:absolute;top:0;height:100%;border-radius:5px;background:#3b4a5a}
   .bar span.win{background:var(--ok)}
   #kc{display:block;width:100%;height:auto;border-radius:6px;background:#0a0d11}
+  .quizrow{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+  .qbox{text-align:center;flex:0 0 auto}
+  #q{image-rendering:pixelated;width:88px;height:88px;background:#07090c;
+    border:1px solid var(--line);border-radius:6px;display:block}
+  .qlab{font-size:.72rem;color:var(--dim);margin-top:5px;letter-spacing:.04em}
+  .qlab b{color:#c3cfdb;font-size:.9rem}
+  .qans{width:88px;height:88px;display:flex;align-items:center;justify-content:center;
+    font-size:2.6rem;font-weight:600;background:#11161c;border:1px solid var(--line);
+    border-radius:6px}
+  .verdict{font-size:2rem;width:1.6em;text-align:center;color:var(--dim)}
+  .verdict.ok{color:var(--good)}.verdict.no{color:var(--hot)}
+  .tally{flex:1 1 150px;min-width:130px}
+  .hist{display:flex;flex-wrap:wrap;gap:3px;margin-top:7px}
+  .hist i{width:7px;height:7px;border-radius:2px;background:#2a323b}
+  .hist i.ok{background:var(--good)}.hist i.no{background:var(--hot)}
+  .hist i.gap{width:2px;height:9px;border-radius:0;background:#4a5663;margin:0 3px}
+  .tally .qlab b{color:var(--ink)}
   #fly{display:block;width:100%;height:230px;border-radius:6px;
     background:radial-gradient(120% 100% at 50% 20%,#1a212a,#0a0d11)}
   .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.78rem;color:var(--dim);margin-top:10px}
@@ -79,13 +96,14 @@ FlyWire v783 ＋ Shiu et al. 2024 の LIF モデル、ブラウザ内の WebAsse
 <div class="panel">
   <h2>1. 教える</h2>
   <div class="row">
-    <button class="go" data-act="train" data-per="3" disabled>MNIST で訓練（各 3 枚）</button>
+    <button data-act="train" data-per="3" disabled>さらに各 3 枚</button>
     <button data-act="train" data-per="9" disabled>さらに各 9 枚</button>
     <button data-act="score" disabled>見たことのない数字で採点</button>
     <button data-act="forget" disabled>忘れさせる</button>
   </div>
-  <p class="note" id="trained">まだ何も教えていない。まず MNIST の手書き数字で訓練する
-  （1 枚ごとに 0.4 秒ぶんの脳をまわすので、各 3 枚で 20 秒ほどかかる）。</p>
+  <p class="note" id="trained">ページを開くと、MNIST の手書き数字を各 3 枚、自動で教えてから出題が始まる
+  （1 枚ごとに 0.4 秒ぶんの脳をまわすので、最初の訓練に 15 秒ほどかかる）。
+  12 問めでもう各 9 枚ぶん自分で覚え直す。</p>
   <div id="scorebox" hidden>
     <p class="scoreline"><span id="scorepct">–</span> <small id="scoresub"></small></p>
     <div class="mono" id="conf"></div>
@@ -93,7 +111,32 @@ FlyWire v783 ＋ Shiu et al. 2024 の LIF モデル、ブラウザ内の WebAsse
 </div>
 
 <div class="panel">
-  <h2>2. 書いて読ませる</h2>
+  <h2>2. 出題 → 蠅が答える</h2>
+  <div class="quizrow">
+    <div class="qbox">
+      <canvas id="q" width="12" height="12"></canvas>
+      <div class="qlab">問題 <b id="qtruth">–</b></div>
+    </div>
+    <div class="verdict" id="verdict">–</div>
+    <div class="qbox">
+      <div class="qans" id="qans">–</div>
+      <div class="qlab">蠅の答え</div>
+    </div>
+    <div class="tally">
+      <div class="scoreline"><span id="tallypct">–</span></div>
+      <div class="qlab" id="tallysub">まだ出題していない</div>
+      <div class="hist" id="hist"></div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <button class="go" id="autobtn" data-act="auto" disabled>自動でまわす</button>
+    <button data-act="ask" disabled>1 問だけ</button>
+  </div>
+  <p id="status">脳を読み込んでいます…</p>
+</div>
+
+<div class="panel">
+  <h2>3. 自分で書いて読ませる</h2>
   <div class="padrow">
     <canvas id="pad" width="220" height="220"></canvas>
     <div class="side">
@@ -108,13 +151,12 @@ FlyWire v783 ＋ Shiu et al. 2024 の LIF モデル、ブラウザ内の WebAsse
       <div class="teach" id="teach"></div>
     </div>
   </div>
-  <p id="status">脳を読み込んでいます…</p>
 </div>
 
 <div class="panel">
   <h2>蠅の答え</h2>
   <canvas id="fly"></canvas>
-  <p class="note" id="flynote">蠅が前脚で旗を立てて答える。
+  <p class="note" id="flynote">出題のたびに、蠅が前脚で旗を立てて答える。
   自信があるときはぴたりと掲げて振り、迷っているときは旗がふらつく。
   体は他のページと同じ NeuroMechFly の骨格なので、旗を持ち上げているのは本物の脚の逆運動学。</p>
 </div>
@@ -206,7 +248,7 @@ FlyWire v783 ＋ Shiu et al. 2024 の LIF モデル、ブラウザ内の WebAsse
 <script type="module">
 import { FlagFly } from './flag.js?v=4';
 const $ = (s) => document.querySelector(s);
-const worker = new Worker(new URL('./brain-worker.js?v=1', import.meta.url), { type: 'module' });
+const worker = new Worker(new URL('./brain-worker.js?v=6', import.meta.url), { type: 'module' });
 
 // the fly that holds up the answer; it loads alongside the brain
 let fly = null;
@@ -215,6 +257,13 @@ new FlagFly($('#fly')).load().then((f) => { fly = f; })
 
 let meta = null, kcXY = null, busy = true;
 let lastZ = null, lastDigit = null, lastSlots = null;
+// the quiz runs itself: train, then ask question after question
+let auto = true, quizTimer = null, asked = 0, right = 0, lastAsk = null;
+const history = [];
+// once the runner has asked TOPUP_AT questions it teaches itself nine more of
+// each digit, so the jump in accuracy happens on screen
+const TOPUP_AT = 12;
+let splitAt = null;
 
 // ---------------------------------------------------------------- drawing pad
 const pad = $('#pad'), pctx = pad.getContext('2d');
@@ -329,6 +378,59 @@ function drawPreview(img) {
   g.putImageData(d, 0, 0);
 }
 
+// ---------------------------------------------------------------- the quiz
+function drawQuestion(img, truth) {
+  const S = meta ? meta.size : 12, c = $('#q');
+  c.width = c.height = S;
+  const g = c.getContext('2d'), d = g.createImageData(S, S);
+  for (let i = 0; i < S * S; i++) {
+    const v = Math.round(255 * (img ? img[i] : 0));
+    d.data[4 * i] = d.data[4 * i + 1] = d.data[4 * i + 2] = v; d.data[4 * i + 3] = 255;
+  }
+  g.putImageData(d, 0, 0);
+  $('#qtruth').textContent = truth == null ? '–' : truth;
+}
+const pct = (ok, n) => (n ? `${(100 * ok / n).toFixed(0)}%` : '–');
+function drawTally() {
+  if (splitAt == null) {
+    $('#tallypct').textContent = pct(right, asked);
+    $('#tallysub').textContent = asked
+      ? `正解 ${right} / ${asked}（偶然なら 11.1%、各 ${Math.round((meta?.taughtRounds) || 3)} 枚の訓練）`
+      : 'まだ出題していない';
+  } else {
+    const a = history.slice(0, splitAt), b = history.slice(splitAt);
+    const ao = a.filter(Boolean).length, bo = b.filter(Boolean).length;
+    $('#tallypct').textContent = b.length ? pct(bo, b.length) : pct(ao, a.length);
+    $('#tallysub').innerHTML = `各 3 枚のとき <b>${pct(ao, a.length)}</b>（${ao}/${a.length}）` +
+      ` → 各 12 枚では <b>${b.length ? pct(bo, b.length) : '–'}</b>（${bo}/${b.length}）`;
+  }
+  $('#hist').innerHTML = history.slice(-72).map((v, i) => {
+    const at = Math.max(0, history.length - 72) + i;
+    return (splitAt != null && at === splitAt ? '<i class="gap"></i>' : '') +
+      `<i class="${v ? 'ok' : 'no'}"></i>`;
+  }).join('');
+}
+function setAuto(on) {
+  auto = on;
+  $('#autobtn').textContent = on ? '止める' : '自動でまわす';
+  $('#autobtn').classList.toggle('go', !on);
+  if (!on && quizTimer) { clearTimeout(quizTimer); quizTimer = null; }
+  if (on && !busy) nextQuestion(300);      // while busy, whatever finishes starts it
+}
+function nextQuestion(delay = 0) {
+  if (quizTimer) clearTimeout(quizTimer);
+  quizTimer = setTimeout(() => {
+    quizTimer = null;
+    if (busy) { nextQuestion(400); return; }        // the brain is doing something else
+    let d;
+    do { d = 1 + Math.floor(Math.random() * 9); } while (d === lastAsk && Math.random() < 0.8);
+    lastAsk = d;
+    busy = true; enable(false);
+    $('#status').textContent = '出題中…';
+    worker.postMessage({ type: 'ask', digit: d, k: Math.floor(Math.random() * (meta.perTest || 20)) });
+  }, delay);
+}
+
 // ---------------------------------------------------------------- panels
 function drawBars() {
   const tb = $('#bars tbody');
@@ -372,8 +474,9 @@ function drawKC() {
 
 // ---------------------------------------------------------------- controls
 const buttons = () => [...document.querySelectorAll('button[data-act]')];
+// 'clear' always works, and 'auto' stays live so the runner can be stopped mid-question
 const enable = (on) => buttons().forEach((b) => {
-  if (b.dataset.act !== 'clear') b.disabled = !on;
+  if (b.dataset.act !== 'clear' && !(b.dataset.act === 'auto' && meta)) b.disabled = !on;
 });
 $('#teach').innerHTML = Array.from({ length: 9 }, (_, i) =>
   `<button data-act="teach" data-digit="${i + 1}" disabled>${i + 1}</button>`).join('');
@@ -383,10 +486,13 @@ document.addEventListener('click', (e) => {
   if (!b) return;
   const act = b.dataset.act;
   if (act === 'clear') { strokes = []; redrawPad(); return; }
+  if (act === 'auto') { setAuto(!auto); return; }
   if (busy || b.disabled) return;
+  if (act !== 'ask' && auto) setAuto(false);        // a manual move stops the runner
   busy = true; enable(false);
   if (act === 'train') {
     $('#status').textContent = '教えています…';
+    if (splitAt == null) { asked = 0; right = 0; history.length = 0; }
     worker.postMessage({ type: 'train', per: +b.dataset.per, from: meta.taughtRounds || 0 });
     meta.taughtRounds = (meta.taughtRounds || 0) + (+b.dataset.per);
   } else if (act === 'score') {
@@ -397,11 +503,15 @@ document.addEventListener('click', (e) => {
     meta.taughtRounds = 0;
   } else if (act === 'read') {
     $('#status').textContent = '読んでいます…';
+    if (auto) setAuto(false);
     if (fly) fly.think();
     worker.postMessage({ type: 'read', img: image12() });
   } else if (act === 'teach') {
     $('#status').textContent = `「${b.dataset.digit}」として覚えさせています…`;
     worker.postMessage({ type: 'read', img: image12(), label: +b.dataset.digit });
+  } else if (act === 'ask') {
+    if (auto) setAuto(false);
+    nextQuestion(0);
   } else if (act === 'sample') {
     worker.postMessage({ type: 'sample', digit: 1 + Math.floor(Math.random() * 9),
                          k: Math.floor(Math.random() * 20) });
@@ -409,6 +519,11 @@ document.addEventListener('click', (e) => {
 });
 
 // ---------------------------------------------------------------- worker
+worker.onerror = (e) => {
+  $('#status').textContent = '脳を読み込めなかった: ' + (e.message || e.type)
+    + '（ブラウザの再読み込みで直らない場合は連絡してください）';
+  busy = false;
+};
 worker.onmessage = async (e) => {
   const m = e.data;
   if (m.type === 'progress') {
@@ -423,16 +538,26 @@ worker.onmessage = async (e) => {
     kcXY = await kcPositions(m.kc);
     drawBars(); drawKC(); redrawPad();
     $('#status').textContent = `準備完了 — ${m.channels} チャンネル / 投射ニューロン ${m.pns} 本 / ` +
-      `ケニヨン細胞 ${m.kc.length.toLocaleString()} 個 / 読み出し ${m.readouts.map((r) => r.name).join(', ')}`;
-    busy = false; enable(true);
+      `ケニヨン細胞 ${m.kc.length.toLocaleString()} 個。まず MNIST を各 3 枚教えます…`;
+    $('#autobtn').disabled = false;       // stays live from here on, even while busy
+    drawQuestion(null, null); drawTally(); setAuto(true);
+    // teach it on its own, then the quiz starts from the 'trained' reply
+    meta.taughtRounds = 3;
+    worker.postMessage({ type: 'train', per: 3, from: 0 });
   } else if (m.type === 'trained') {
-    $('#trained').textContent = `MNIST の手書き数字を各 ${Math.round(m.taught / 9)} 枚、合計 ${m.taught} 枚教えた。` +
-      ' 書いて読ませるか、見たことのない数字で採点する。';
+    $('#trained').textContent = `MNIST の手書き数字を各 ${Math.round(m.taught / 9)} 枚、合計 ${m.taught} 枚教えた。`;
     busy = false; enable(true); $('#status').textContent = '教え終わった。';
+    if (splitAt == null) { asked = 0; right = 0; history.length = 0; }
+    drawTally();
+    if (auto) nextQuestion(500);
   } else if (m.type === 'forgotten') {
     lastZ = null; lastDigit = null; lastSlots = null;
     if (fly) fly.lower();
     $('#trained').textContent = 'まっさらに戻した。';
+    asked = 0; right = 0; history.length = 0; lastAsk = null; splitAt = null;
+    drawQuestion(null, null); drawTally();
+    $('#qans').textContent = '–';
+    $('#verdict').textContent = '–'; $('#verdict').className = 'verdict';
     $('#scorebox').hidden = true;
     $('#guess').firstChild.textContent = '–';
     $('#guesssub').textContent = '指かマウスで数字を書いて「読ませる」';
@@ -448,6 +573,29 @@ worker.onmessage = async (e) => {
       rows.push(String(d).padStart(4) + ' ' + m.conf[d].slice(1, 10).map((v) => String(v).padStart(3)).join(''));
     $('#conf').textContent = head + '\n' + rows.join('\n') + '\n  ↑ 本当の数字';
     busy = false; enable(true); $('#status').textContent = '採点終わり。';
+  } else if (m.type === 'answered') {
+    lastZ = m.z; lastDigit = m.digit; lastSlots = m.slots;
+    drawBars(); drawKC(); drawQuestion(m.img, m.truth);
+    const ok = m.digit === m.truth;
+    asked++; if (ok) right++;
+    history.push(ok); drawTally();
+    $('#qans').textContent = String(m.digit);
+    const v = $('#verdict');
+    v.textContent = ok ? '○' : '×';
+    v.className = 'verdict ' + (ok ? 'ok' : 'no');
+    const sorted = [...m.z].map((x, i) => [x, i + 1]).sort((a, b) => a[0] - b[0]);
+    const margin = sorted[1][0] - sorted[0][0];
+    if (fly) fly.show(m.digit, Math.min(1, margin / 1.1));
+    busy = false; enable(true);
+    $('#status').textContent = ok ? `正解。2 番目の候補は ${sorted[1][1]}（差 ${margin.toFixed(2)}）`
+      : `不正解 — 本当は ${m.truth}。2 番目の候補は ${sorted[1][1]}（差 ${margin.toFixed(2)}）`;
+    if (auto && asked === TOPUP_AT && meta.taughtRounds === 3) {
+      splitAt = asked; meta.taughtRounds = 12;
+      busy = true; enable(false);
+      $('#status').textContent = 'もう各 9 枚ずつ教えます（実測では 36% → 44%。'
+        + '差がはっきり見えるには数十問かかります）…';
+      worker.postMessage({ type: 'train', per: 9, from: 3 });
+    } else if (auto) nextQuestion(2300);
   } else if (m.type === 'readout') {
     lastZ = m.z; lastDigit = m.digit; lastSlots = m.slots;
     drawBars(); drawKC();

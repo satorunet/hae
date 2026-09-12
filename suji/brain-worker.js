@@ -7,9 +7,12 @@
 // exactly the Kenyon cells that image lit up. Reading an image back means
 // asking which compartment has lost the most of its drive from the cells this
 // image lights up now.
-import { FlyBrain } from '../flybrain/flybrain.js?v=2';
+// The query strings pin a version of the library: Cloudflare caches these URLs,
+// and an older cached flybrain.js/.wasm has no plasticity in it at all. Bump
+// them together whenever flybrain.js or flybrain.wasm changes.
+import { FlyBrain } from '../flybrain/flybrain.js?v=4';
 
-const V = '?v=1';
+const V = '?v=4';
 const BASE = new URL('../flybrain/', import.meta.url);
 const HZ = 220;        // a full-black pixel drives its channel this hard
 const INK = 0.05;      // pixels fainter than this are not presented at all
@@ -32,6 +35,9 @@ async function init() {
   ]);
   G = mb.groups;
   data = unpack(buf);
+  for (const fn of ['setPlasticity', 'gainByGroup', 'dopamine', 'forget'])
+    if (typeof FlyBrain.prototype[fn] !== 'function')
+      throw new Error(`flybrain.js is stale (no ${fn}) - bump the ?v= in brain-worker.js`);
   brain = await FlyBrain.load({
     graph: new URL('data/flywire783.fbg.gz' + V, BASE),
     wasm: new URL('flybrain.wasm' + V, BASE),
@@ -193,6 +199,16 @@ self.onmessage = async (e) => {
     if (m.label != null) taught++;   // the baseline is now slightly stale, but usable
     const d = decide(r.gain);
     post({ type: 'readout', taught, label: m.label ?? null, digit: d.digit,
+           z: d.z, slots: r.slots, calibrated: !!norm }, [r.slots.buffer]);
+    return;
+  }
+
+  if (m.type === 'ask') {                   // one quiz question, asked and answered
+    const truth = m.digit, k = m.k % data.perTest;
+    const img = data.test[truth][k];
+    const r = present(img, null);
+    const d = decide(r.gain);
+    post({ type: 'answered', truth, k, img: Float32Array.from(img), digit: d.digit,
            z: d.z, slots: r.slots, calibrated: !!norm }, [r.slots.buffer]);
     return;
   }

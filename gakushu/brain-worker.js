@@ -26,6 +26,9 @@ async function init() {
     fetch(new URL('data/mbcompart783.json' + V, BASE)).then((r) => r.json()),
   ]);
   G = mb.groups; CM = cm;
+  for (const fn of ['setPlasticity', 'gainFrom', 'gain', 'forget'])
+    if (typeof FlyBrain.prototype[fn] !== 'function')
+      throw new Error(`flybrain.js is stale (no ${fn}) - bump the ?v= in brain-worker.js`);
   brain = await FlyBrain.load({
     graph: new URL('data/flywire783.fbg.gz' + V, BASE),
     wasm: new URL('flybrain.wasm' + V, BASE),
