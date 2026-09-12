@@ -105,6 +105,13 @@ export class FlagFly {
     LEGS.forEach((leg, i) => this.body.setLeg(leg, this.neutral[i]));
     this.downTip = {};
     for (const leg of ['lf', 'rf']) this.downTip[leg] = this.body.legTip(leg).slice();
+    // the tarsi: five small segments at the end of each leg, which the CPG and
+    // IK leave straight. They get their own life below.
+    this.tars = {};
+    for (const leg of LEGS) this.tars[leg] = {
+      z0: this.body.legTip(leg)[2], lift: 0, tap: 0, tapT: rnd(0.5, 3),
+      ph: rnd(0, TAU), seg: [1, 2, 3, 4].map((k) => this.body.joints[`${leg}_tarsus${k}-${leg}_tarsus${k + 1}-pitch`]),
+    };
     this.z0 = -this.body.legTip('lm')[2];              // thorax height while standing
 
     this.flag = this.makeFlag();
@@ -364,6 +371,34 @@ export class FlagFly {
         for (let j = 0; j < 3; j++) mid[j] += tip[j] / 2;
       }
     });
+
+    // ---------------------------------------------------------- tarsi
+    // On the ground each tarsus lies nearly flat, flexing a little as the body
+    // shifts over it; lifted off the ground it curls (more towards the tip);
+    // holding the pole the front ones wrap round it; and now and then a
+    // standing leg flicks the end of its tarsus up and sets it down again.
+    // Positive pitch on these joints curls the segment under.
+    for (const leg of LEGS) {
+      const T = this.tars[leg], tip = this.body.legTip(leg);
+      const front = leg[1] === 'f';
+      const up = clamp((tip[2] - T.z0) / 0.28, 0, 1);
+      T.lift = approach(T.lift, Math.max(up, front && holding ? 0.9 * k : 0), dt, 0.05);
+      T.tapT -= dt;
+      if (T.tapT <= 0) {
+        T.tapT = rnd(1.2, 4.5);
+        if (T.lift < 0.2 && this.dL + this.dR < 0.2) T.tap = 1;
+      }
+      T.tap = Math.max(0, T.tap - dt / 0.32);
+      const flick = Math.sin(Math.PI * (1 - T.tap)) * (T.tap > 0 ? 1 : 0);   // up and back down
+      const load = 0.5 + 0.5 * Math.sin(this.t * 1.9 + T.ph);              // weight shifting over it
+      T.seg.forEach((j, s) => {
+        const d = s / 3;                                                   // 0 proximal .. 1 distal
+        j.q = -0.087 + 0.05 + 0.04 * load
+          + T.lift * (0.2 + 0.18 * d)
+          - flick * (0.1 + 0.25 * d)                                       // the flick lifts the claws
+          + 0.025 * Math.sin(this.t * (4.3 + 1.7 * s) + T.ph + s);
+      });
+    }
 
     // ---------------------------------------------------------- head and mouthparts
     const jset = (n, v) => { const j = this.body.joints[n]; if (j) j.q = v; };
