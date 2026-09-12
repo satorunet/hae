@@ -55,16 +55,16 @@
   .bar span{position:absolute;top:0;height:100%;border-radius:5px;background:#3b4a5a}
   .bar span.win{background:var(--ok)}
   #kc{display:block;width:100%;height:auto;border-radius:6px;background:#0a0d11}
-  .quizrow{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+  .quizrow{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:14px}
   .qbox{text-align:center;flex:0 0 auto}
-  #q{image-rendering:pixelated;width:88px;height:88px;background:#07090c;
-    border:1px solid var(--line);border-radius:6px;display:block}
-  .qlab{font-size:.72rem;color:var(--dim);margin-top:5px;letter-spacing:.04em}
-  .qlab b{color:#c3cfdb;font-size:.9rem}
-  .qans{width:88px;height:88px;display:flex;align-items:center;justify-content:center;
-    font-size:2.6rem;font-weight:600;background:#11161c;border:1px solid var(--line);
-    border-radius:6px}
-  .verdict{font-size:2rem;width:1.6em;text-align:center;color:var(--dim)}
+  #q{image-rendering:pixelated;width:132px;height:132px;background:#07090c;
+    border:1px solid var(--line);border-radius:8px;display:block}
+  .qlab{font-size:.74rem;color:var(--dim);margin-top:6px;letter-spacing:.04em}
+  .qlab b{color:#c3cfdb;font-size:1.05rem}
+  .qans{width:132px;height:132px;display:flex;align-items:center;justify-content:center;
+    font-size:4rem;font-weight:600;background:#11161c;border:1px solid var(--line);
+    border-radius:8px}
+  .verdict{font-size:2.6rem;width:1.5em;text-align:center;color:var(--dim)}
   .verdict.ok{color:var(--good)}.verdict.no{color:var(--hot)}
   .tally{flex:1 1 150px;min-width:130px}
   .hist{display:flex;flex-wrap:wrap;gap:3px;margin-top:7px}
@@ -72,7 +72,7 @@
   .hist i.ok{background:var(--good)}.hist i.no{background:var(--hot)}
   .hist i.gap{width:2px;height:9px;border-radius:0;background:#4a5663;margin:0 3px}
   .tally .qlab b{color:var(--ink)}
-  #fly{display:block;width:100%;height:230px;border-radius:6px;
+  #fly{display:block;width:100%;height:230px;border-radius:8px;
     background:radial-gradient(120% 100% at 50% 20%,#1a212a,#0a0d11)}
   .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.78rem;color:var(--dim);margin-top:10px}
   .legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
@@ -112,6 +112,7 @@ FlyWire v783 ＋ Shiu et al. 2024 の LIF モデル、ブラウザ内の WebAsse
 
 <div class="panel">
   <h2>2. 出題 → 蠅が答える</h2>
+  <canvas id="fly"></canvas>
   <div class="quizrow">
     <div class="qbox">
       <canvas id="q" width="12" height="12"></canvas>
@@ -154,11 +155,13 @@ FlyWire v783 ＋ Shiu et al. 2024 の LIF モデル、ブラウザ内の WebAsse
 </div>
 
 <div class="panel">
-  <h2>蠅の答え</h2>
-  <canvas id="fly"></canvas>
-  <p class="note" id="flynote">出題のたびに、蠅が前脚で旗を立てて答える。
-  自信があるときはぴたりと掲げて振り、迷っているときは旗がふらつく。
-  体は他のページと同じ NeuroMechFly の骨格なので、旗を持ち上げているのは本物の脚の逆運動学。</p>
+  <h2>この蠅について</h2>
+  <p class="note" id="flynote">出題のたびに、蠅が前脚で旗を立てて答え、少し振ってから下ろす。
+  <b>正解なら餌（砂糖水の粒）が落ちてきて、歩いて行って口吻を伸ばして食べる。</b>
+  自信があるときはぴたりと掲げて振り、迷っているときは旗がふらついて布もくすむ。
+  手が空いているあいだは前脚をこすり合わせたり、頭をぬぐったり、口を動かしたり、歩き回ったりしている。<br>
+  体は他のページと同じ NeuroMechFly の骨格で、歩行は flygym の CPG ＋ MuJoCo で実測した体速度、
+  身づくろいと旗を持つ動作は前脚足先の逆運動学、口の動きは rostrum と haustellum の関節。</p>
 </div>
 
 <div class="panel">
@@ -246,19 +249,19 @@ FlyWire v783 ＋ Shiu et al. 2024 の LIF モデル、ブラウザ内の WebAsse
 </footer>
 
 <script type="module">
-import { FlagFly } from './flag.js?v=4';
+import { FlagFly } from './flag.js?v=11';
 const $ = (s) => document.querySelector(s);
 const worker = new Worker(new URL('./brain-worker.js?v=6', import.meta.url), { type: 'module' });
 
 // the fly that holds up the answer; it loads alongside the brain
 let fly = null;
-new FlagFly($('#fly')).load().then((f) => { fly = f; })
+new FlagFly($('#fly')).load().then((f) => { fly = f; window.__fly = f; })
   .catch((e) => { $('#flynote').textContent = '（3D の蠅を読み込めなかった: ' + e.message + '）'; });
 
 let meta = null, kcXY = null, busy = true;
 let lastZ = null, lastDigit = null, lastSlots = null;
 // the quiz runs itself: train, then ask question after question
-let auto = true, quizTimer = null, asked = 0, right = 0, lastAsk = null;
+let auto = true, quizTimer = null, asked = 0, right = 0, lastAsk = null, flyWaits = 0;
 const history = [];
 // once the runner has asked TOPUP_AT questions it teaches itself nine more of
 // each digit, so the jump in accuracy happens on screen
@@ -417,11 +420,16 @@ function setAuto(on) {
   if (!on && quizTimer) { clearTimeout(quizTimer); quizTimer = null; }
   if (on && !busy) nextQuestion(300);      // while busy, whatever finishes starts it
 }
-function nextQuestion(delay = 0) {
+// `awaitFly` holds the next question until the fly has finished answering the
+// last one - waving the flag, walking to its reward and eating it. That is
+// paced by animation frames, so on a slow device it simply takes longer.
+function nextQuestion(delay = 0, awaitFly = false) {
   if (quizTimer) clearTimeout(quizTimer);
   quizTimer = setTimeout(() => {
     quizTimer = null;
-    if (busy) { nextQuestion(400); return; }        // the brain is doing something else
+    if (busy) { nextQuestion(400, awaitFly); return; }   // the brain is doing something else
+    if (awaitFly && fly && fly.isBusy() && ++flyWaits < 120) { nextQuestion(250, true); return; }
+    flyWaits = 0;
     let d;
     do { d = 1 + Math.floor(Math.random() * 9); } while (d === lastAsk && Math.random() < 0.8);
     lastAsk = d;
@@ -585,17 +593,17 @@ worker.onmessage = async (e) => {
     v.className = 'verdict ' + (ok ? 'ok' : 'no');
     const sorted = [...m.z].map((x, i) => [x, i + 1]).sort((a, b) => a[0] - b[0]);
     const margin = sorted[1][0] - sorted[0][0];
-    if (fly) fly.show(m.digit, Math.min(1, margin / 1.1));
+    if (fly) fly.show(m.digit, Math.min(1, margin / 1.1), ok);
     busy = false; enable(true);
-    $('#status').textContent = ok ? `正解。2 番目の候補は ${sorted[1][1]}（差 ${margin.toFixed(2)}）`
-      : `不正解 — 本当は ${m.truth}。2 番目の候補は ${sorted[1][1]}（差 ${margin.toFixed(2)}）`;
+    $('#status').textContent = (ok ? `正解。餌が出る。` : `不正解 — 本当は ${m.truth}。`)
+      + `2 番目の候補は ${sorted[1][1]}（差 ${margin.toFixed(2)}）`;
     if (auto && asked === TOPUP_AT && meta.taughtRounds === 3) {
       splitAt = asked; meta.taughtRounds = 12;
       busy = true; enable(false);
       $('#status').textContent = 'もう各 9 枚ずつ教えます（実測では 36% → 44%。'
         + '差がはっきり見えるには数十問かかります）…';
       worker.postMessage({ type: 'train', per: 9, from: 3 });
-    } else if (auto) nextQuestion(2300);
+    } else if (auto) nextQuestion(600, true);     // ...and then wait for the fly to finish
   } else if (m.type === 'readout') {
     lastZ = m.z; lastDigit = m.digit; lastSlots = m.slots;
     drawBars(); drawKC();
