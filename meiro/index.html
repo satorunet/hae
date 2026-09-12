@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>迷路実験 — 蠅はうんちにたどり着けるか</title>
+<meta name="description" content="複雑な迷路のいちばん奥にうんちを置き、歩行のショウジョウバエ（NeuroMechFly）を入口から放つ実験。匂いの拡散場を左右の触角で比べて進みます。匂いなしの対照条件つき。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A6%9F%3C/text%3E%3C/svg%3E">
+<meta name="theme-color" content="#0d0d0d">
+<link rel="canonical" href="https://hae.satoru.net/meiro/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="hae.satoru.net">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:url" content="https://hae.satoru.net/meiro/">
+<meta property="og:title" content="迷路実験 — 蠅はうんちにたどり着けるか">
+<meta property="og:description" content="迷路の奥のうんちへ、歩行の蠅が匂いをたどってたどり着けるか。匂いなしの対照つき。">
+<meta property="og:image" content="https://hae.satoru.net/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="迷路実験 — 蠅はうんちにたどり着けるか">
+<meta name="twitter:description" content="迷路の奥のうんちへ、歩行の蠅が匂いをたどってたどり着けるか。">
+<meta name="twitter:image" content="https://hae.satoru.net/og.jpg">
+<style>
+:root {
+  color-scheme: dark;
+  --page: #0d0d0d; --ink: #f4f4f2; --ink-2: #b9b8b1; --muted: #85847e;
+  --ring: rgba(255,255,255,0.12); --btn: #232322; --card: #191918; --stage: #1d2126;
+  --accent: #ffcf5a; --good: #74e08d;
+  --bar: 52px; --turn: 40px;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  overflow: hidden; overscroll-behavior: none; touch-action: manipulation;
+  font: 15px/1.6 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+}
+button { font: inherit; color: var(--ink); background: var(--btn); border: 1px solid var(--ring); border-radius: 12px; cursor: pointer; }
+button:active { transform: scale(0.985); }
+select { font: inherit; font-size: 16px; color: var(--ink); background: var(--btn); border: 1px solid var(--ring); border-radius: 10px; padding: 4px 8px; }
+
+#app { position: fixed; inset: 0; display: flex; flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.bar { flex: 0 0 auto; height: var(--bar); display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 6px; padding: 0 10px; }
+.tallies { display: flex; align-items: baseline; justify-content: center; gap: 16px; }
+.t { display: flex; align-items: baseline; gap: 5px; }
+.t .n { font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+.t .l { font-size: 0.7rem; color: var(--ink-2); }
+#n-goal { color: var(--good); }
+.clock { justify-self: end; text-align: right; font-size: 0.9rem; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+.stage { position: relative; flex: 1 1 0; min-height: 0; overflow: hidden; background: var(--stage); }
+#view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.load { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #cfcfc8; font-size: 0.9rem; }
+
+.ctl { flex: 0 0 auto; min-height: var(--turn); display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; padding: 6px 10px 2px; }
+.ctl label { font-size: 0.8rem; color: var(--ink-2); display: flex; align-items: center; gap: 5px; }
+.ctl button { min-height: 36px; padding: 0 14px; font-size: 0.88rem; }
+.note { text-align: center; font-size: 0.78rem; color: var(--muted); padding: 2px 12px 6px; min-height: 1.5em; }
+
+.sheet { position: fixed; inset: 0; z-index: 10; background: #0b0b0b; overflow-y: auto; }
+.sheet[hidden] { display: none; }
+.inner { min-height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 14px;
+  max-width: 430px; margin: 0 auto; padding: calc(env(safe-area-inset-top) + 24px) 20px calc(env(safe-area-inset-bottom) + 24px); }
+.warn-t { font-size: 1.22rem; font-weight: 800; color: var(--accent); }
+.sheet p { margin: 0; font-size: 0.9rem; line-height: 1.75; color: var(--ink-2); }
+.sheet h2 { font-size: 0.96rem; margin: 4px 0 0; }
+.sheet b { color: var(--ink); }
+.rules { margin: 0; padding-left: 1.25em; font-size: 0.87rem; line-height: 1.8; color: var(--ink-2); }
+.acts { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.acts button { min-height: 56px; font-size: 1.04rem; font-weight: 700; }
+.acts .primary { background: var(--accent); color: #191918; border: 0; }
+.small { font-size: 0.78rem; line-height: 1.7; color: var(--muted); }
+.goto { width: 100%; min-height: 46px; font-size: 16px; color: var(--ink-2); background: var(--btn);
+  border: 1px solid var(--ring); border-radius: 12px; padding: 0 12px; text-align: center; text-align-last: center; }
+@media (min-width: 700px) and (min-height: 520px) {
+  :root { --bar: 58px; }
+  #app { max-width: 1000px; margin: 0 auto; }
+  .stage { border-radius: 14px; }
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div class="bar">
+    <div></div>
+    <div class="tallies">
+      <div class="t"><span class="n" id="n-in">0</span><span class="l">匹 放した</span></div>
+      <div class="t"><span class="n" id="n-goal">0</span><span class="l">匹 到達</span></div>
+    </div>
+    <div class="clock" id="clock"></div>
+  </div>
+  <div class="stage" id="stage">
+    <canvas id="view" aria-label="迷路と蠅"></canvas>
+    <div class="load" id="load">蠅を読み込んでいます…</div>
+  </div>
+  <div class="ctl">
+    <label>匂い
+      <select id="odour">
+        <option value="on" selected>あり</option>
+        <option value="off">なし（対照）</option>
+      </select>
+    </label>
+    <label>飛行
+      <select id="flight">
+        <option value="on" selected>あり</option>
+        <option value="off">なし（歩行のみ）</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="plume" checked> 匂いを表示</label>
+    <button id="again">新しい迷路</button>
+  </div>
+  <div class="note" id="note"></div>
+</div>
+
+<div class="sheet" id="intro">
+  <div class="inner">
+    <div class="warn-t">⚠️ 閲覧注意</div>
+    <p>うんちと蠅が出てきます。</p>
+
+    <h2>迷路実験</h2>
+    <p>迷路のいちばん奥にうんちを置き、入口から<b>蠅を30匹</b>放ちます。90秒でたどり着けるか。</p>
+    <ol class="rules">
+      <li>蠅は<b>左右の触角で匂いの濃さを比べて</b>濃い方へ曲がります（実際のハエと同じやり方）</li>
+      <li>匂いが薄すぎて分からないときは<b>ランダムに歩き</b>、壁に触角が当たったら<b>向きを変えます</b></li>
+      <li>ときどき<b>飛んで壁を越えます</b>。飛行中は匂いの濃い方角へ向かい、通路の上でだけ着地します</li>
+      <li><b>1匹ずつ色の違う線</b>で通った経路が残ります</li>
+    </ol>
+    <p class="small"><b>匂いなし</b>と<b>飛行なし</b>は対照条件です。飛べる個体は壁を越えてしまうので、本物の迷路実験が飛べない個体を使う理由がそのまま見られます。</p>
+    <p class="small">匂いは迷路の通路を伝わる拡散場として計算しています（壁は通りません）。壁越しではなく<b>曲がり角を回り込んで</b>薄くなるので、奥ほど手がかりは弱くなります。床の色がその濃さで、明るいほど濃い（対数表示：濃さは5桁にわたるので、鼻と同じ対数目盛りにしています）。</p>
+    <p class="small">体は flygym の NeuroMechFly、歩行は CPG と実測の歩行マップです。ただし<b>この探索の判断はルールベースで、コネクトームのモデルは使っていません</b>（嗅覚受容ニューロンを刺激すると Shiu モデルの脳全体が暴走してしまい、操縦に使えないため）。飛行も切ってあります — 飛べると壁を越えてしまうので、実際の迷路実験と同じく歩行個体で行います。</p>
+
+    <div class="acts">
+      <button class="primary" id="start">はじめる</button>
+    </div>
+    <select class="goto" id="goto" aria-label="ほかのページへ">
+      <option value="">ほかのページ…</option>
+      <option value="/">ハエたたき（1分）</option>
+      <option value="/game2/">ハエたたき 1対1</option>
+      <option value="/game/">うんち陣取り</option>
+      <option value="/kansatsu/">蠅観察（脳を見る）</option>
+    </select>
+    <p class="note">体: <a href="https://github.com/NeLy-EPFL/flygym" style="color:#7fb0ea">flygym</a> NeuroMechFly ・ 脳: <a href="https://flywire.ai/" style="color:#7fb0ea">FlyWire</a> / <a href="https://github.com/philshiu/Drosophila_brain_model" style="color:#7fb0ea">Shiu et al.</a></p>
+  </div>
+</div>
+
+<script>
+document.getElementById('goto').addEventListener('change', (e) => { if (e.target.value) location.href = e.target.value; });
+</script>
+<script type="module" src="main.js?v=2"></script>
+</body>
+</html>
