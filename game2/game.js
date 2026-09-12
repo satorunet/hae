@@ -201,7 +201,8 @@ class Fly {
   step(dt) {
     this.stateT += dt;
     this.touchL = Math.max(0, this.touchL - dt); this.touchR = Math.max(0, this.touchR - dt);
-    if (this.remote) this.netStep(dt);
+    if (this.dead) this.deadStep(dt);
+    else if (this.remote) this.netStep(dt);
     else if (this.state === 'held') this.holdStep(dt); else if (this.airborne) this.flightStep(dt); else this.groundStep(dt);
     const W = this.w, F = this.flight;
     const tuck = (this.state === 'flight' || (this.state === 'takeoff' && F.launched)) && !(F && F.reach);
@@ -217,10 +218,10 @@ class Fly {
     this.prob = approach(this.prob, this.state === 'feed' ? clamp(this.drive.MN9 / 55, 0.35, 1) : 0, dt, 0.08);
     if (this.state === 'groom') { this.groomPh += dt * TAU * 5.5; this.groomSlow += dt * TAU * 0.35; }
     const flapping = this.state === 'flight' || this.state === 'landing' || (this.state === 'takeoff' && F.flapOn)
-      || (this.state === 'held' && this.held.buzz) || (this.hurt && this.hurtBuzz);
+      || (this.state === 'held' && this.held.buzz) || (this.hurt && this.hurtBuzz) || (this.dead && this.throeBuzz);
     this.flap = approach(this.flap, flapping ? 1 : 0, dt, flapping ? 0.006 : 0.02);
     if (this.flap > 0.01) this.wingPh += dt * TAU * WINGBEAT;
-    const open = this.hurt ? true : this.state === 'takeoff' ? F.wingsUp : this.state === 'held' ? this.held.buzz : this.airborne || (this.state === 'land' && this.stateT < 0.05);
+    const open = this.dead ? this.throeBuzz : this.hurt ? true : this.state === 'takeoff' ? F.wingsUp : this.state === 'held' ? this.held.buzz : this.airborne || (this.state === 'land' && this.stateT < 0.05);
     this.wingOpen = approach(this.wingOpen, open ? 1 : 0, dt, open ? (F && F.mode === 'escape' ? 0.004 : 0.03) : 0.06);
     // spontaneous take-off (body default, not the brain)
     if (!this.remote && this.state === 'walk' && !this.leaving && world.t - this.lastFlightEnd > 6 && Math.random() < dt / 45) this.takeoff('voluntary', this.yaw + rnd(-0.4, 0.4), 'body');
@@ -303,6 +304,30 @@ class Fly {
     if (this.state === 'land' && this.flight) vx += this.flight.u * Math.exp(-this.stateT / 0.03);
     this.x += (c * vx - s * v.vy * this.s) * dt; this.y += (s * vx + c * v.vy * this.s) * dt; this.yaw = wrap(this.yaw + v.wz * dt);
     this.speed = Math.abs(vx);
+  }
+
+  // it does not simply stop: the legs jerk, the wings rattle, and it all dies down over a few seconds
+  deadStep(dt) {
+    const d = this.dth;
+    d.t += dt;
+    const k = Math.max(0, 1 - d.t / d.span);                 // how much fight is left
+    if ((d.T -= dt) <= 0) {
+      d.on = !d.on;
+      d.T = d.on ? rnd(0.04, 0.2) * (0.35 + k) : rnd(0.12, 0.8) / (0.12 + k);
+      d.dL = d.on ? rnd(-1.6, 1.6) * k : 0;
+      d.dR = d.on ? rnd(-1.6, 1.6) * k : 0;
+      d.buzz = d.on && Math.random() < 0.5 * k;
+      d.jolt = d.on ? rnd(-1, 1) * k : 0;
+    }
+    this.throeBuzz = d.buzz;
+    this.cpg.step(dt * 2.6, d.dL, d.dR);                     // legs still firing, out of time with each other
+    const w = (d.on ? 1 : 0.15) * k;
+    this.yaw = d.yaw0 + d.jolt * 0.12 * w;
+    this.roll = d.roll0 + Math.sin(d.t * 27) * 0.09 * w;
+    this.pitch = d.pitch0 + Math.sin(d.t * 21 + 1.3) * 0.07 * w;
+    this.x = d.x0 + Math.cos(d.yaw0) * d.jolt * 0.25 * w;
+    this.y = d.y0 + Math.sin(d.yaw0) * d.jolt * 0.25 * w;
+    if (d.t >= d.span) settleDead(this);
   }
 
   // knocked over and unable to fly: it buzzes its wings flat against the ground and skids along on its side
@@ -469,6 +494,13 @@ class Fly {
   // stance feet on the (uneven) ground: fit height and tilt to the weighted stance tips
   place(simDt, full = true) {
     const body = this.body, g = this.ground;
+    if (this.dead) {                                         // lying where it fell, not standing on its feet
+      const root = body.root;
+      root.position.set(this.x, this.y, this.z);
+      _qa.setFromAxisAngle(AZ, this.yaw); _qb.setFromAxisAngle(AY, -this.pitch); _qc.setFromAxisAngle(AX, this.roll);
+      root.quaternion.copy(_qa).multiply(_qb).multiply(_qc);
+      return;
+    }
     if (!this.airborne || (this.state === 'takeoff' && !this.flight.launched)) {
       if (!full) { g.z = groundZ(this.x, this.y) + (this.gOff ?? this.walkZ); }        // follow the terrain until the next full fit
       else {
@@ -1001,6 +1033,7 @@ function stepSwats(dt) {
     s.vz = (s.z - z0) / Math.max(dt, 1e-5);
     s.mesh.position.z = s.z + 0.55;
     const mine = !s.quiet && (!net.on || net.host);
+    if (mine && !s.hit) sweepSwat(s);                         // catches anything flying through the swing
     if (!s.hit && s.t >= SWAT_FALL) {
       s.hit = true;
       sfxSlap();
@@ -1019,6 +1052,19 @@ function gapAt(lx, ly) {
     return Math.min(1, d / (SWAT_STEP / 2));
   };
   return Math.min(near(lx), near(ly));
+}
+// on the way down the head sweeps through the air: whatever is in its path is knocked out of flight
+function sweepSwat(s) {
+  const c = Math.cos(-s.rot), sn = Math.sin(-s.rot);
+  for (const f of flies) {
+    if (!f.airborne || f.state === 'held' || f.leaving) continue;
+    if (f.z > s.z + 2.5 || f.z < s.z - 3.5) continue;         // not in the plane the mesh is passing through
+    const dx = f.x - s.x, dy = f.y - s.y;
+    if (Math.hypot(dx, dy) > SWAT_HALF * 1.5 + f.s) continue;
+    const lx = dx * c - dy * sn, ly = dx * sn + dy * c, m = SWAT_HALF + f.s * 0.45;
+    if (Math.abs(lx) > m || Math.abs(ly) > m) continue;
+    pinDown(f, s);                                            // swatted down and carried to the ground
+  }
 }
 // only the host does this, so both devices agree on who got whom
 function impactSwat(s) {
@@ -1099,19 +1145,36 @@ function hurtLook(f) {
 // flattened where it stood, turned over on its back, legs curled in — and left there
 function squash(f, i) {
   flies.splice(i, 1); net.byId.delete(f.id);
-  f.state = 'dead'; f.remote = false; f.flight = null;
+  f.state = 'dead'; f.dead = true; f.remote = false; f.flight = null; f.held = null; f.startle = null;
+  f.hurt = false; f.settled = false;
   const b = f.body;
-  for (const leg of LEGS) b.setLeg(leg, FIXED_POSES[leg].tuck);   // legs drawn up the way a dead fly's are
-  b.update();
-  for (const w of b.wings) { w.obj.quaternion.copy(w.wing.qRest); for (const g of w.wing.ghosts) g.visible = false; }
   for (const m of b.microchaetae) m.visible = false;
-  b.root.position.set(f.x, f.y, groundZ(f.x, f.y) + 0.22 * f.s);
-  _qa.setFromAxisAngle(AZ, f.yaw + rnd(-0.35, 0.35));
-  _qc.setFromAxisAngle(AX, Math.PI + rnd(-0.3, 0.3));             // over it goes
-  b.root.quaternion.copy(_qa).multiply(_qc);
-  b.root.scale.set(f.s * 1.16, f.s * 1.16, f.s * 0.3);            // and squashed flat
+  for (const w of b.wings) for (const g of w.wing.ghosts) g.visible = false;
+  b.root.scale.set(f.s * 1.16, f.s * 1.16, f.s * 0.3);            // squashed flat
+  f.z = groundZ(f.x, f.y) + 0.22 * f.s;
+  f.yaw += rnd(-0.5, 0.5);
+  f.pitch = rnd(-0.3, 0.3);
+  const r = Math.random();                                        // how it happens to land
+  f.roll = r < 0.42 ? Math.PI + rnd(-0.35, 0.35)                  // on its back, the way you picture it
+    : r < 0.8 ? (Math.random() < 0.5 ? 1 : -1) * (Math.PI / 2 + rnd(-0.5, 0.5))   // or over on one side
+      : rnd(-0.45, 0.45);                                         // or face down where it stood
+  // it takes a while to stop: bursts of leg and wing activity, thinning out
+  f.dth = { t: 0, span: rnd(2.2, 5.0), T: rnd(0.02, 0.1), on: true, dL: rnd(-1.6, 1.6), dR: rnd(-1.6, 1.6),
+    buzz: true, jolt: rnd(-1, 1), x0: f.x, y0: f.y, yaw0: f.yaw, pitch0: f.pitch, roll0: f.roll };
+  f.pose(0.001, 0, true);
   corpses.push(f);
   while (corpses.length > CORPSE_MAX) { const o = corpses.shift(); scene.remove(o.body.root, o.body.skin); }
+}
+// finally still: legs drawn up the way a dead fly's are, wings folded back down
+function settleDead(f) {
+  f.settled = true;
+  f.throeBuzz = false; f.flap = 0; f.wingOpen = 0.35;
+  const b = f.body;
+  for (const leg of LEGS) b.setLeg(leg, FIXED_POSES[leg].tuck);
+  b.update();
+  f.yaw = f.dth.yaw0; f.pitch = f.dth.pitch0; f.roll = f.dth.roll0;
+  f.x = f.dth.x0; f.y = f.dth.y0;
+  f.pose(0.001, 0, false);
 }
 function clearCorpses() { for (const f of corpses) scene.remove(f.body.root, f.body.skin); corpses.length = 0; }
 // when a swing takes more than one, the number pops where it happened
@@ -1644,6 +1707,7 @@ function frame(now) {
       acc -= H; simDt += H; world.t += H;
       for (const f of flies) f.step(H);
       if (Math.round(world.t * 1000) % 20 === 0) for (const f of flies) if (!f.remote) f.decideRule(0.02);
+      for (const f of corpses) if (!f.settled) f.step(H);
       if (++stepN % 4 === 0) { stepSwats(4 * H); crowd(4 * H); dropGone(); balance(4 * H); }
       const h = world.hand;
       if (h) {
@@ -1661,6 +1725,7 @@ function frame(now) {
     const blur = clamp((WINGBEAT * simDt - 0.15) / 0.35, 0, 1);
     const many = flies.length > 30; frameN++;
     flies.forEach((f, i) => f.pose(simDt, blur, !many || ((i + frameN) & 1) === 0));
+    for (const f of corpses) if (!f.settled) f.pose(simDt, blur, true);
     const t2 = performance.now();
     const h = world.hand; handMesh.visible = !!h;
     if (h) { handMesh.position.set(h.x, h.y, h.z); if (Math.hypot(h.vx, h.vy) > 20) handMesh.rotation.z = Math.atan2(h.vy, h.vx); }
