@@ -1,6 +1,6 @@
 // What /suji/ and /hiragana/ share: the server's record, a copy of the
 // server's fly answering questions in the browser, and a drawing pad.
-import { FlagFly } from '../suji/flag.js?v=12';
+import { FlagFly } from '../suji/flag.js?v=16';
 import { RecordChart, COLORS } from './chart.js?v=3';
 import { normalise } from '../hiragana/kana.mjs?v=2';
 
@@ -106,6 +106,8 @@ export function runPage(o) {
   function setAuto(on) {
     if (on && hand) {
       hand = false; clearTimeout(backTimer); qpad?.classList.remove('on');
+      showJudge(false); handCands = [];
+      if (fly && fly.hold) fly.release(false);
       strokes = []; redrawPad();
       if (o.course === 'suji') $('#qsrc').hidden = true;
     }
@@ -197,6 +199,75 @@ export function runPage(o) {
   // answer where the questions were. A while after the last stroke the quiz
   // comes back by itself (if it was running).
   let hand = false, handWasAuto = false, readTimer = null, backTimer = null;
+  // Marking the fly's reading of your own writing - kept on this page only,
+  // never sent anywhere. The fly holds its flag up until you answer; × moves
+  // it on to its second and then third choice; ○ feeds it, and once it has
+  // eaten the quiz carries on by itself.
+  let handCands = [], handK = 0, handSure = 1;
+  const hstat = { n: 0, first: 0, top3: 0 };
+  function showJudge(on) {
+    $('#judge').hidden = !on;
+    if (on) {
+      $('#judgeok').disabled = false; $('#judgeno').disabled = false;
+      $('#judgeq').textContent = handK === 0 ? '蠅の読みは合ってる？'
+        : `第 ${handK + 1} 候補「${labels[handCands[handK]]}」は合ってる？`;
+    }
+  }
+  function drawHandTally() {
+    $('#judgetally').textContent = hstat.n
+      ? `手書きの答え合わせ ${hstat.n} 字: 第 1 候補で正解 ${hstat.first}、第 3 候補までに正解 ${hstat.top3}（このページだけの記録。サーバの学習には使わない）`
+      : '';
+  }
+  function holdCandidate() {
+    const c = handCands[handK];
+    $('#qans').textContent = labels[c];
+    $('#guess').firstChild.textContent = labels[c];
+    if (fly) fly.show(labels[c], handK === 0 ? handSure : 0.25, false, true);
+    showJudge(true);
+  }
+  function finishHand(msg) {
+    showJudge(false); handCands = [];
+    clearTimeout(readTimer);
+    strokes = []; redrawPad();                     // a clean page for the next one
+    $('#status').textContent = msg;
+  }
+  function judge(ok) {
+    if (!handCands.length || $('#judgeok').disabled) return;
+    $('#judgeok').disabled = true; $('#judgeno').disabled = true;
+    const v = $('#verdict'); v.textContent = ok ? '○' : '×'; v.className = 'verdict ' + (ok ? 'ok' : 'no');
+    if (ok) {
+      hstat.n++; hstat.top3++; if (handK === 0) hstat.first++;
+      drawHandTally();
+      if (fly) fly.release(true);
+      finishHand(`○ 第 ${handK + 1} 候補の「${labels[handCands[handK]]}」で正解 — 餌を食べ終わったら出題に戻る。`);
+      backToQuiz();
+      return;
+    }
+    if (fly) fly.puzzle(handK + 1 < handCands.length ? 1.6 : 2.4);   // "hmm, not that one?"
+    if (handK + 1 < handCands.length) {
+      handK++;
+      $('#status').textContent = `× では第 ${handK + 1} 候補の「${labels[handCands[handK]]}」？`;
+      holdCandidate();
+      return;
+    }
+    hstat.n++;
+    drawHandTally();
+    if (fly) fly.release(false);
+    finishHand(`× 第 ${handCands.length} 候補まで全部はずれ（${handCands.map((c) => labels[c]).join('・')}）。出題に戻る。`);
+    backToQuiz();
+  }
+  // once marked, straight back to the quiz - after the flag is down (and the food eaten)
+  function backToQuiz() {
+    clearTimeout(backTimer);
+    const back = (tries = 0) => {
+      if (!hand || strokes.length) return;         // they started writing another one
+      if (fly && fly.isBusy() && tries < 160) { backTimer = setTimeout(() => back(tries + 1), 250); return; }
+      handWasAuto = true; leaveHand();
+    };
+    backTimer = setTimeout(back, 400);
+  }
+  $('#judgeok').addEventListener('click', () => judge(true));
+  $('#judgeno').addEventListener('click', () => judge(false));
   function enterHand() {
     clearTimeout(backTimer);
     if (hand) return;
@@ -214,6 +285,8 @@ export function runPage(o) {
     if (!hand) return;
     hand = false;
     qpad?.classList.remove('on');
+    showJudge(false); handCands = [];
+    if (fly && fly.hold) fly.release(false);
     strokes = []; redrawPad();
     if (o.course === 'suji') $('#qsrc').hidden = true;
     if (handWasAuto) setAuto(true);
@@ -226,7 +299,7 @@ export function runPage(o) {
     clearTimeout(readTimer);
     readTimer = setTimeout(readDrawing, 450);        // a pause after a stroke = read it
     clearTimeout(backTimer);
-    backTimer = setTimeout(leaveHand, HAND_IDLE);
+    if (!handCands.length) backTimer = setTimeout(leaveHand, HAND_IDLE);   // not while a reading waits for ○/×
   };
   for (const cv of [pad, qpad]) {
     if (!cv) continue;
@@ -235,6 +308,8 @@ export function runPage(o) {
       cv.setPointerCapture(e.pointerId); drawing = true; clearTimeout(readTimer);
       if (!hand) strokes = [];                       // a fresh page for a fresh go
       enterHand();
+      showJudge(false); handCands = [];              // the reading is about to change
+      clearTimeout(backTimer);
       strokes.push([at(cv, e)]); redrawPad();
     });
     cv.addEventListener('pointermove', (e) => { if (drawing) { strokes[strokes.length - 1].push(at(cv, e)); redrawPad(); } });
@@ -270,14 +345,19 @@ export function runPage(o) {
   // ------------------------------------------------------------ controls
   $('#autobtn').addEventListener('click', () => setAuto(!auto));
   $('#askbtn').addEventListener('click', () => { if (auto) setAuto(false); nextQuestion(0); });
-  $('#clearbtn').addEventListener('click', () => {
+  const clearDrawing = () => {
     strokes = []; redrawPad(); clearTimeout(readTimer);
     if (hand) {
-      $('#qans').textContent = '…';
+      $('#qans').textContent = '…'; showJudge(false); handCands = [];
+      if (fly && fly.hold) fly.release(false);
+      $('#verdict').textContent = '?'; $('#verdict').className = 'verdict';
       $('#guess').firstChild.textContent = '–';
+      $('#status').textContent = '消した。もう一度どうぞ。';
       clearTimeout(backTimer); backTimer = setTimeout(leaveHand, HAND_IDLE);
     }
-  });
+  };
+  $('#clearbtn').addEventListener('click', clearDrawing);
+  $('#qclear')?.addEventListener('click', clearDrawing);
   $('#readbtn')?.addEventListener('click', () => { if (strokes.length) { enterHand(); readDrawing(); } });
   $('#backbtn').addEventListener('click', () => {
     clearTimeout(backTimer); clearTimeout(readTimer);
@@ -337,16 +417,16 @@ export function runPage(o) {
       lastDrive = m.drive; lastAnswer = m.answer; lastSlots = m.slots;
       lastAllowed = [...Array(unlocked()).keys()];
       $('#guess').firstChild.textContent = labels[m.answer];
-      if (hand) {                                  // answer where the questions are, by the fly
-        const img = padImage();
-        drawPixels($('#q'), img);
-        $('#qans').textContent = labels[m.answer];
-        $('#status').textContent = `手書きモード — 蠅の答えは「${labels[m.answer]}」、次の候補は「${labels[m.second]}」。` +
-          `書き足すと読み直す。${Math.round(HAND_IDLE / 1000)} 秒さわらないと出題に戻る。`;
-      }
       $('#guesssub').textContent = `次の候補は「${labels[m.second]}」` +
         (o.levelName && unlocked() < letters.length ? `（いま読めるのは習った ${unlocked()} 文字の中からだけ）` : '');
-      if (fly) fly.show(labels[m.answer], Math.min(1, m.margin / 0.03), false);
+      if (hand && strokes.length && !drawing) {    // answer where the questions are, and wait for ○/×
+        handCands = lastAllowed.slice().sort((a, b) => m.drive[a] - m.drive[b]).slice(0, 3);
+        handK = 0; handSure = Math.min(1, m.margin / 0.03);
+        $('#verdict').textContent = '?'; $('#verdict').className = 'verdict';
+        clearTimeout(backTimer);
+        holdCandidate();
+        $('#status').textContent = `蠅の答えは「${labels[m.answer]}」。合っていたら ○、ちがったら ×（次の候補を出す）。`;
+      } else if (!hand && fly) fly.show(labels[m.answer], Math.min(1, m.margin / 0.03), false);
       drawBars(); drawKC();
       busy = false;
     }
@@ -371,6 +451,7 @@ export function runPage(o) {
   }
 
   addEventListener('resize', () => { drawKC(); if (fly) fly.resize(); });
+  window.__hand = () => ({ hand, strokes: strokes.length, cands: handCands.map((c) => labels[c]), k: handK, auto, busy });
   $('#legend-test').style.background = COLORS.test;
   $('#legend-run').style.background = COLORS.run;
   redrawPad();

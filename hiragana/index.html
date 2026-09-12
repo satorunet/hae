@@ -69,7 +69,16 @@
   #qpad{position:absolute;inset:0;width:100%;height:100%;border-radius:8px;touch-action:none;cursor:crosshair;
     border:1px dashed #2f3b47}
   #qpad.on{border:1px solid #4a5d70}
-  .qhint{font-size:.68rem;color:#6b7887;margin-top:2px}
+  .judge{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;padding:9px 11px;
+    background:#11161c;border:1px solid var(--line);border-radius:8px}
+  .judge[hidden]{display:none}
+  .judge .jq{font-size:.85rem;color:#c3cfdb;margin-right:4px}
+  .judge button{font-size:1rem;padding:8px 16px}
+  .judge .jok{border-color:#2f6b49;color:#bff0d2}.judge .jok:hover:not(:disabled){border-color:var(--good)}
+  .judge .jno{border-color:#6b2f35;color:#ffd0d0}.judge .jno:hover:not(:disabled){border-color:var(--hot)}
+  .judge button:disabled{opacity:.4;cursor:default}
+  .qhint{font-size:.68rem;color:#6b7887;margin-top:4px}
+  .qclear{font-size:.74rem;padding:3px 10px;margin-left:4px}
   #q{image-rendering:pixelated;width:132px;height:132px;background:#07090c;border:1px solid var(--line);border-radius:8px;display:block}
   .qlab{font-size:.74rem;color:var(--dim);margin-top:6px;letter-spacing:.04em;max-width:132px}
   .qlab b{color:#c3cfdb;font-size:1.05rem}
@@ -116,7 +125,7 @@
     <div class="qbox">
       <div class="qdraw"><canvas id="q" width="16" height="16"></canvas><canvas id="qpad" width="264" height="264" title="ここに字を書くと蠅が読む"></canvas></div>
       <div class="qlab">問題 <b id="qtruth">–</b><br><span id="qsrc"></span></div>
-      <div class="qhint">✍ この枠にも書ける</div>
+      <div class="qhint">✍ この枠にも書ける <button id="qclear" class="qclear">消す</button></div>
     </div>
     <div class="verdict" id="verdict">–</div>
     <div class="qbox">
@@ -129,6 +138,12 @@
       <div class="hist" id="hist"></div>
     </div>
   </div>
+  <div class="judge" id="judge" hidden>
+    <span class="jq" id="judgeq">蠅の読みは合ってる？</span>
+    <button id="judgeok" class="jok">○ 正解</button>
+    <button id="judgeno" class="jno">× はずれ</button>
+  </div>
+  <div class="note" id="judgetally" style="margin-top:6px"></div>
   <div class="row" style="margin-top:12px">
     <button id="autobtn">止める</button>
     <button id="askbtn">1 問だけ</button>
@@ -238,7 +253,7 @@
 </footer>
 
 <script type="module">
-import { runPage } from '../juku/page.js?v=6';
+import { runPage } from '../juku/page.js?v=12';
 import { ROWS, INK } from './kana.mjs?v=2';
 const ROWNAME = ['あ', 'か', 'さ', 'た', 'な', 'は', 'ま', 'や', 'ら', 'わ'];
 runPage({

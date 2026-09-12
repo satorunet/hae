@@ -54,12 +54,17 @@ export class FlagFly {
     this.dL = 0; this.dR = 0; this.turn = 0;
     this.x = 0; this.y = 0; this.yaw = -0.5;
     this.head = 0;
+    this.puzzleT = 0;              // > 0 while it is puzzling over a wrong answer
+    this.puzzleFor = 0;
     this.look = new THREE.Vector3(0.35, 0, 0.8);
     this.camAng = this.yaw + CAM_OFF;   // the camera keeps to one side of the fly
   }
 
   /** True while an answer is still playing out, so the page can wait for it. */
-  isBusy() { return this.phase !== 'idle'; }
+  isBusy() { return this.phase !== 'idle' || this.puzzleT > 0; }
+
+  /** Told it was wrong: cock the head this way and that for a while, as if thinking. */
+  puzzle(seconds = 2.2) { this.puzzleT = this.puzzleFor = seconds; this.puzzleSide = Math.random() < 0.5 ? 1 : -1; }
 
   async load() {
     const [{ J, bin }, L] = await Promise.all([
@@ -166,7 +171,8 @@ export class FlagFly {
    * Hold up the flag for `digit`, then put it down; if `correct`, food appears
    * and it goes and eats. `sure` in 0..1: a low value raises it slowly and wobbles.
    */
-  show(digit, sure = 1, correct = false) {
+  show(digit, sure = 1, correct = false, hold = false) {
+    this.hold = !!hold;            // keep it up until release()
     this.digit = digit;
     this.sure = clamp(sure, 0, 1);
     this.reward = !!correct;
@@ -176,13 +182,26 @@ export class FlagFly {
     this.want = 1;
     this.setAct('stand', 9);
   }
+  /**
+   * Put down a flag held with show(..., hold = true); `correct` pays for it -
+   * the food comes when the flag is down (at once, if it already is).
+   */
+  release(correct = false) {
+    this.hold = false;
+    if (this.phase === 'toFood' || this.phase === 'feeding') return;
+    if (this.phase === 'idle') {
+      if (correct) { this.dropFood(); this.setPhase('toFood'); this.setAct('stand', 6); }
+      return;
+    }
+    this.reward = !!correct; this.want = 0; this.setPhase('lowering');
+  }
   /** A question is being worked on: stop wandering and stand ready. */
   think() {
-    this.want = 0; this.digit = null; this.reward = false;
+    this.want = 0; this.digit = null; this.reward = false; this.hold = false;
     this.setPhase('lowering'); this.setAct('stand', 4);
   }
   /** Put everything away and carry on being a fly. */
-  lower() { this.want = 0; this.reward = false; this.setPhase('lowering'); this.actT = 0; }
+  lower() { this.want = 0; this.reward = false; this.hold = false; this.setPhase('lowering'); this.actT = 0; }
 
   setPhase(p) { this.phase = p; this.phaseT = 0; }
 
@@ -236,7 +255,7 @@ export class FlagFly {
     const speed = this.phase === 'raising' ? 1.1 + 1.9 * this.sure : 2.4;
     this.lift += clamp(this.want - this.lift, -dt * speed, dt * speed);
     if (this.phase === 'raising' && this.lift > 0.995) this.setPhase('waving');
-    if (this.phase === 'waving' && this.phaseT > WAVE_FOR) { this.want = 0; this.setPhase('lowering'); }
+    if (this.phase === 'waving' && !this.hold && this.phaseT > WAVE_FOR) { this.want = 0; this.setPhase('lowering'); }
     if (this.phase === 'lowering' && this.lift < 0.005) {
       this.flag.group.visible = false;
       if (this.reward) { this.dropFood(); this.setPhase('toFood'); } else this.setPhase('idle');
@@ -349,7 +368,20 @@ export class FlagFly {
     jset('c_head-c_rostrum-pitch', -1.25 * this.prob);
     jset('c_rostrum-c_haustellum-pitch', -1.6 * this.prob);
     jset('c_thorax-c_head-pitch', 0.18 * this.prob + (grooming ? 0.12 * Math.sin(this.groomPh * 0.5) : 0));
-    jset('c_thorax-c_head-yaw', this.head);
+    // puzzling: quick sideways tilts of the head (a jerky "hmm?"), fading in and out
+    let pr = 0, py = 0, pp = 0;
+    if (this.puzzleT > 0) {
+      this.puzzleT = Math.max(0, this.puzzleT - dt);
+      const u = 1 - this.puzzleT / this.puzzleFor;                // 0 -> 1 over the puzzle
+      const env = Math.min(1, u * 6, (1 - u) * 5);
+      const tick = Math.tanh(5 * Math.sin(u * this.puzzleFor * TAU * 0.9));   // snaps from side to side
+      pr = env * this.puzzleSide * 0.68 * tick;
+      py = env * this.puzzleSide * 0.3 * tick;
+      pp = env * (0.12 + 0.06 * Math.sin(u * this.puzzleFor * TAU * 2.2));
+    }
+    jset('c_thorax-c_head-yaw', this.head + py);
+    jset('c_thorax-c_head-roll', pr);
+    if (pp) { const j = this.body.joints['c_thorax-c_head-pitch']; if (j) j.q += pp; }
 
     const breathe = Math.sin(this.t * 2.3) * 0.01;
     this.wob = this.phase === 'waving'
