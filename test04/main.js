@@ -26,10 +26,13 @@ const WALK_R = 34;               // walkers turn back beyond this
 const HAND_Z = 9;                // the hand sweeps this high above the ground
 const HOLD_Z = 7;                // a caught fly is carried this high
 
-// ------------------------------------------------------------------ the dropping: a height field
-// a new dropping on every visit: a few log-like lumps, piled up or scattered
-// (centre x, y, angle, half-length, radius, height, extra height at the ridge)
-let LUMPS, NOFF, POOP_R;
+// ------------------------------------------------------------------ the droppings: height fields
+// Up to three at a time, each dropped at a free spot of its own: press the button a fourth time and
+// the oldest sinks away as the new one falls. Each is a few log-like lumps, piled up or scattered.
+// (lump: centre x, y, angle, half-length, radius, height, extra height at the ridge)
+const MAX_POOPS = 3;
+const SPREAD = 19;               // how far out from the middle a new one can land
+const poops = [];                // { x, y, lumps, noff, R, z, body, stain, anim }
 function newLumps() {
   const k = rnd(0.5, 1.5);                                 // how much there is, too
   const n = 1 + Math.floor(Math.random() * (k > 1 ? 6 : 4)), pile = Math.random() < 0.6, out = [];
@@ -38,34 +41,58 @@ function newLumps() {
     out.push([Math.cos(a) * r, Math.sin(a) * r, rnd(0, Math.PI * 2), rnd(1.4, 4.6) * k, rnd(2.2, 3.9) * Math.sqrt(k), rnd(1.5, 2.7) * Math.sqrt(k),
       (i === 0 ? rnd(0, 0.8) : pile ? rnd(0.8, 3.2) : rnd(0, 0.6)) * Math.sqrt(k)]);
   }
-  LUMPS = out;
-  POOP_R = Math.max(...LUMPS.map(([cx, cy, , L, R]) => Math.hypot(cx, cy) + L + R));      // its reach from the centre
-  NOFF = [rnd(0, 100), rnd(0, 100)];                       // texture/bump offsets
+  return { lumps: out, noff: [rnd(0, 100), rnd(0, 100)],
+    R: Math.max(...out.map(([cx, cy, , L, R]) => Math.hypot(cx, cy) + L + R)) };          // its reach from its centre
 }
-newLumps();
 function hash2(x, y) { const h = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return h - Math.floor(h); }
 function vnoise(x, y) {
   const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
   return lerp(lerp(hash2(xi, yi), hash2(xi + 1, yi), u), lerp(hash2(xi, yi + 1), hash2(xi + 1, yi + 1), u), v);
 }
-let DROP_Z = 0;             // vertical offset of the dropping while it sinks (< 0) or falls (> 0)
-function poopH(x, y) {
-  if (DROP_Z > 0.01) return 0;
+// height of one dropping at a world point (p.z > 0 while it is still up in the air)
+function poopHAt(p, x, y) {
+  if (p.z > 0.01) return 0;
+  const lx = x - p.x, ly = y - p.y;
+  if (Math.abs(lx) > p.R + 1 || Math.abs(ly) > p.R + 1) return 0;
   let h = 0;
-  for (const [cx, cy, a, L, R0, Hh, zo] of LUMPS) {
-    const dx = x - cx, dy = y - cy, c = Math.cos(a), s = Math.sin(a), t = dx * c + dy * s;
+  for (const [cx, cy, a, L, R0, Hh, zo] of p.lumps) {
+    const dx = lx - cx, dy = ly - cy, c = Math.cos(a), s = Math.sin(a), t = dx * c + dy * s;
     const R = R0 * (1 - 0.13 * (0.5 + 0.5 * Math.cos(t * 1.9 + cx)));          // segmented like a log
     const u = Math.max(0, Math.abs(t) - L), v = -dx * s + dy * c;
     const d2 = (u * u + v * v) / (R * R);
     if (d2 < 1) h = Math.max(h, (Hh * Math.sqrt(1 - d2) + zo * (1 - d2)) * (1 - 0.1 * (0.5 + 0.5 * Math.cos(t * 1.9 + cx))));
   }
-  const nx = x + NOFF[0], ny = y + NOFF[1];
+  const nx = lx + p.noff[0], ny = ly + p.noff[1];
   if (h > 0) h += (0.4 * (vnoise(nx * 0.9 + 3, ny * 0.9) - 0.5) + 0.14 * (vnoise(nx * 4, ny * 4) - 0.5)) * Math.min(1, h / 0.8)
     - 0.12 * Math.max(0, 1 - Math.abs(Math.sin(nx * 2.3 + vnoise(nx, ny) * 4)) * 8) * Math.min(1, h / 1.5);   // cracks
-  return Math.max(0, h + DROP_Z);
+  return Math.max(0, h + p.z);
 }
+function poopH(x, y) { let h = 0; for (const p of poops) { const v = poopHAt(p, x, y); if (v > h) h = v; } return h; }
 const groundZ = (x, y) => poopH(x, y);
 const onPoop = (x, y) => poopH(x, y) > 0.25;
+// the one that smells best from a given spot: bigger and closer wins
+function bestPoop(x, y) {
+  let best = null, bs = -1;
+  for (const p of poops) {
+    if (p.z > 0.01 || (p.anim && p.anim.phase === 'sink')) continue;
+    const s = (p.R + 5) / (Math.hypot(p.x - x, p.y - y) + 9);
+    if (s > bs) { bs = s; best = p; }
+  }
+  return best;
+}
+// pick one at random, the best-smelling ones more often
+function weightedPoop(x, y) {
+  const w = [];
+  let tot = 0;
+  for (const p of poops) {
+    const v = (p.z > 0.01 || (p.anim && p.anim.phase === 'sink')) ? 0 : (p.R + 5) / (Math.hypot(p.x - x, p.y - y) + 9);
+    w.push(v); tot += v;
+  }
+  if (tot <= 0) return null;
+  let r = Math.random() * tot;
+  for (let i = 0; i < poops.length; i++) { r -= w[i]; if (r <= 0) return poops[i]; }
+  return poops[poops.length - 1];
+}
 
 // ------------------------------------------------------------------ one fly
 let J = null, BIN = null, LO = null, loco = null;
@@ -245,8 +272,12 @@ class Fly {
     }
     // exploration + attraction to the dropping + staying near it (body) + DNa02 asymmetry (brain): + = turn right
     this.om += (-this.om / 0.6) * dt + (Math.random() - 0.5) * 2.4 * Math.sqrt(dt);
+    if ((this.aimT = (this.aimT || 0) - dt) <= 0) { this.aimT = 0.5; this.aim = bestPoop(this.x, this.y); }
+    const A = this.aim && poops.includes(this.aim) ? this.aim : null;
+    const da = A ? Math.hypot(this.x - A.x, this.y - A.y) : 0;
+    const toA = A ? wrap(Math.atan2(A.y - this.y, A.x - this.x) - this.yaw) : 0;
+    const pull = A && da > A.R * 0.7 ? -clamp(toA, -1, 1) * Math.min(0.6, 0.012 * da) : 0;
     const dist = Math.hypot(this.x, this.y), toC = wrap(Math.atan2(-this.y, -this.x) - this.yaw);
-    const pull = dist > POOP_R * 0.7 ? -clamp(toC, -1, 1) * Math.min(0.6, 0.012 * dist) : 0;
     const back = dist > WALK_R ? -Math.sign(toC) * (dist - WALK_R) * 0.1 : 0;
     // keep out of the neighbours' way (re-checked every 4 ms)
     if ((this.avoidT = (this.avoidT || 0) - dt) <= 0) {
@@ -284,10 +315,17 @@ class Fly {
     return { x: 0, y: 0 };
   }
   landingSpot() {
+    const t = weightedPoop(this.x, this.y);
     for (let k = 0; k < 40; k++) {
-      const onIt = Math.random() < 0.7, a = rnd(0, TAU), r = onIt ? rnd(0, POOP_R) : rnd(POOP_R, POOP_R + 11);
-      const p = { x: Math.cos(a) * r, y: Math.sin(a) * r };
-      if (onIt && !onPoop(p.x, p.y)) continue;
+      let p;
+      if (t) {
+        const onIt = Math.random() < 0.7, a = rnd(0, TAU), r = onIt ? rnd(0, t.R) : rnd(t.R, t.R + 11);
+        p = { x: t.x + Math.cos(a) * r, y: t.y + Math.sin(a) * r };
+        if (onIt && !onPoop(p.x, p.y)) continue;
+      } else {
+        const a = rnd(0, TAU), r = Math.sqrt(Math.random()) * WALK_R * 0.8;
+        p = { x: Math.cos(a) * r, y: Math.sin(a) * r };
+      }
       if (flies.every((o) => o === this || o.airborne || Math.hypot(o.x - p.x, o.y - p.y) > 3)) return p;
     }
     return { x: rnd(-15, 15), y: rnd(-15, 15) };
@@ -578,25 +616,27 @@ function groundTexture() {
 }
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshStandardMaterial({ map: groundTexture(), roughness: 0.95 }));
 ground.receiveShadow = true; scene.add(ground);
-const dropping = [];
-function buildDropping() {
-  for (const m of dropping) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
-  dropping.length = 0;
-  // a damp stain under it
-  {
+const stainTex = (() => {
   const c = document.createElement('canvas'); c.width = c.height = 256;
   const g = c.getContext('2d'), grd = g.createRadialGradient(128, 128, 20, 128, 128, 128);
   grd.addColorStop(0, 'rgba(40,28,16,0.55)'); grd.addColorStop(0.6, 'rgba(40,28,16,0.25)'); grd.addColorStop(1, 'rgba(40,28,16,0)');
   g.fillStyle = grd; g.fillRect(0, 0, 256, 256);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(POOP_R * 2.6 + 6, POOP_R * 2.3 + 5), new THREE.MeshStandardMaterial({ map: t, transparent: true, depthWrite: false, roughness: 0.6 }));
-  m.position.set(0.6, 0.6, 0.02); m.receiveShadow = true; scene.add(m); dropping.push(m); dropping.stain = m;
-  }
-  // the dropping itself
+  return t;
+})();
+function buildPoopMesh(p) {
+  // a damp stain under it
   {
-  const S = POOP_R + 1, N = Math.round(clamp(S / 0.1, 160, 300)), pos = [], col = [], idx = [];
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(p.R * 2.6 + 6, p.R * 2.3 + 5),
+    new THREE.MeshStandardMaterial({ map: stainTex, transparent: true, opacity: 0, depthWrite: false, roughness: 0.6 }));
+  m.position.set(p.x + 0.6, p.y + 0.6, 0.02); m.receiveShadow = true; scene.add(m); p.stain = m;
+  }
+  // the dropping itself, shaped as it will lie on the ground
+  {
+  const z0 = p.z; p.z = 0;
+  const S = p.R + 1, N = Math.round(clamp(S / 0.13, 130, 230)), pos = [], col = [], idx = [];   // three of these now, so a little coarser
   for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) {
-    const x = -S + 2 * S * i / N, y = -S + 2 * S * j / N, h = poopH(x, y);
+    const x = -S + 2 * S * i / N, y = -S + 2 * S * j / N, h = poopHAt(p, p.x + x, p.y + y);
     pos.push(x, y, h > 0 ? h + 0.02 : 0.01);
     const z = Math.max(0, h), n1 = vnoise(x * 2.2 + z * 1.7 + 7, y * 2.2 - z * 1.3), n2 = vnoise(x * 9 + z * 6, y * 9 + 3 - z * 5);
     const seed = hash2(Math.round(x * 6 + z * 4), Math.round(y * 6)) > 0.985;
@@ -619,55 +659,71 @@ function buildDropping() {
   geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   geo.setIndex(idx); geo.computeVertexNormals();
   const m = new THREE.Mesh(geo, new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.35 }));
-  m.castShadow = true; m.receiveShadow = true; scene.add(m); dropping.push(m); dropping.body = m;
+  m.castShadow = true; m.receiveShadow = true; m.position.set(p.x, p.y, p.z); scene.add(m); p.body = m;
+  p.z = z0;
   }
 }
-buildDropping();
-DROP_Z = 60; dropping.body.position.z = DROP_Z; dropping.body.visible = false; dropping.stain.material.opacity = 0;   // waits up in the air
-// after the viewer-discretion screen: the dropping falls onto empty ground, then the flies come
-function firstDrop() {
-  dropping.body.visible = true;
-  dropAnim = { phase: 'fall', t: 0, v: 0 };
+function removePoop(p) {
+  const i = poops.indexOf(p);
+  if (i >= 0) poops.splice(i, 1);
+  for (const m of [p.body, p.stain]) { if (!m) continue; scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
 }
-// the 便 button: the old dropping sinks into the ground, a new one falls from above and lands with a squash;
-// whoever sits on or near it takes off and comes back
-let dropAnim = null, dropSpeed = 1;
-function scatterFrom(R) {
+// somewhere clear of whatever is already down (a dropping on its way out does not count)
+function freeSpot(R) {
+  const here = poops.filter((p) => !(p.anim && p.anim.phase === 'sink'));
+  for (let k = 0; k < 80; k++) {
+    const a = rnd(0, TAU), r = Math.sqrt(Math.random()) * SPREAD;
+    const x = Math.cos(a) * r, y = Math.sin(a) * r;
+    if (here.every((p) => Math.hypot(p.x - x, p.y - y) > p.R + R + 5)) return [x, y];
+  }
+  return [rnd(-SPREAD, SPREAD), rnd(-SPREAD, SPREAD)];
+}
+let dropSpeed = 1;
+function scatterFrom(x, y, R) {
   for (const f of flies) {
-    if (f.airborne || f.state === 'land' || Math.hypot(f.x, f.y) > R + 3) continue;
-    f.takeoff('voluntary', Math.atan2(f.y, f.x) + rnd(-0.8, 0.8), 'body');
+    if (f.airborne || f.state === 'land' || Math.hypot(f.x - x, f.y - y) > R + 3) continue;
+    f.takeoff('voluntary', Math.atan2(f.y - y, f.x - x) + rnd(-0.8, 0.8), 'body');
     f.flight.T = rnd(0.9, 2.0);
   }
 }
-function changeDropping() {
-  if (dropAnim) return;
-  scatterFrom(POOP_R);
-  dropAnim = { phase: 'sink', t: 0, depth: Math.max(...LUMPS.map((l) => l[5] + l[6])) + 0.8 };
-}
-function stepDropping(dt) {
-  const A = dropAnim; if (!A) return;
-  A.t += dt;
-  const body = dropping.body, stain = dropping.stain;
-  if (A.phase === 'sink') {
-    const u = Math.min(1, A.t / 1.1);
-    DROP_Z = -A.depth * u * u;
-    stain.material.opacity = 1 - u;
-    if (u >= 1) {
-      DROP_Z = 0; newLumps(); buildDropping();              // build it at rest, then lift it up
-      A.phase = 'fall'; A.t = 0; A.v = 0; DROP_Z = 60;
-      scatterFrom(POOP_R);                                    // clear the landing site
-    }
-  } else if (A.phase === 'fall') {
-    A.v += 520 * dt; DROP_Z = Math.max(0, DROP_Z - A.v * dt);
-    stain.material.opacity = 0;
-    if (DROP_Z <= 0) { A.phase = 'squash'; A.t = 0; thud(); }
-  } else {
-    stain.material.opacity = Math.min(1, A.t / 0.25);
-    if (A.t > 0.6) { dropAnim = null; body.scale.set(1, 1, 1); started = true; }
+// the 便 button: one more falls somewhere free, and once there are three the oldest sinks away
+function addDropping(x, y) {
+  if (poops.some((p) => p.anim && p.anim.phase !== 'sink')) return;      // one in the air at a time
+  const shape = newLumps();
+  if (x === undefined) [x, y] = freeSpot(shape.R);
+  const here = poops.filter((p) => !(p.anim && p.anim.phase === 'sink'));
+  if (here.length >= MAX_POOPS) {
+    const old = here[0];
+    old.anim = { phase: 'sink', t: 0, depth: Math.max(...old.lumps.map((l) => l[5] + l[6])) + 0.8 };
   }
-  const sq = A.phase === 'squash' ? 1 - 0.3 * Math.exp(-A.t / 0.09) * Math.cos(A.t * 32) : A.phase === 'fall' ? 1.08 : 1;
-  body.position.z = DROP_Z; body.scale.set(1 + (1 - sq) * 0.35, 1 + (1 - sq) * 0.35, sq);
-  body.castShadow = DROP_Z < 20;                               // no stray shadow sliver while it is high up
+  const p = { x, y, z: 60, ...shape, anim: { phase: 'fall', t: 0, v: 0 } };
+  poops.push(p);
+  buildPoopMesh(p);
+  scatterFrom(x, y, p.R);                                   // clear the landing site
+}
+function firstDrop() { addDropping(0, 0); }
+function stepDropping(dt) {
+  for (let i = poops.length - 1; i >= 0; i--) {
+    const p = poops[i], A = p.anim;
+    if (!A) continue;
+    A.t += dt;
+    if (A.phase === 'sink') {
+      const u = Math.min(1, A.t / 1.1);
+      p.z = -A.depth * u * u;
+      p.stain.material.opacity = 1 - u;
+      if (u >= 1) { removePoop(p); continue; }
+    } else if (A.phase === 'fall') {
+      A.v += 520 * dt; p.z = Math.max(0, p.z - A.v * dt);
+      p.stain.material.opacity = 0;
+      if (p.z <= 0) { A.phase = 'squash'; A.t = 0; thud(); }
+    } else {
+      p.stain.material.opacity = Math.min(1, A.t / 0.25);
+      if (A.t > 0.6) { p.anim = null; p.body.scale.set(1, 1, 1); started = true; }
+    }
+    const sq = A.phase === 'squash' ? 1 - 0.3 * Math.exp(-A.t / 0.09) * Math.cos(A.t * 32) : A.phase === 'fall' ? 1.08 : 1;
+    p.body.position.z = p.z; p.body.scale.set(1 + (1 - sq) * 0.35, 1 + (1 - sq) * 0.35, sq);
+    p.body.castShadow = p.z < 20;                           // no stray shadow sliver while it is high up
+  }
 }
 // "ボトッ": a heavy, wet drop -- a low body whose pitch falls fast, then a short squelch
 function thud() {
@@ -704,7 +760,7 @@ const ring = (() => {
 })();
 
 // ------------------------------------------------------------------ camera: orbit around the dropping
-const cam = { az: -2.0, el: 0.62, dist: clamp(46 + POOP_R * 1.4, 52, 90), target: new THREE.Vector3(0, 0, 1.5) };
+const cam = { az: -2.0, el: 0.62, dist: 84, target: new THREE.Vector3(0, 0, 1.5) };   // far enough back for three
 function placeCamera() {
   const { az, el, dist, target } = cam;
 
@@ -976,7 +1032,7 @@ function balance(dt) {
   if (n < wanted && (arriveT -= dt) <= 0) { addFly(); arriveT = n < 12 ? rnd(0.15, 0.5) : rnd(0.03, 0.12); }
 }
 $('n-flies').addEventListener('change', (e) => { wanted = +e.target.value; });
-$('btn-poop').addEventListener('click', changeDropping);
+$('btn-poop').addEventListener('click', () => addDropping());
 
 // ------------------------------------------------------------------ sound: the buzz of flying flies (synthesized)
 // A few voices follow the loudest buzzing flies: a sawtooth at the wingbeat (~210 Hz) plus its
@@ -1110,5 +1166,9 @@ resize();
     $('load').textContent = '読み込みに失敗しました: ' + (err && err.message || err);
   }
 })();
-window.__sim = { world, flies, cam, select, stats, renderer, audio, dropState: () => [dropAnim ? dropAnim.phase : 'done', +DROP_Z.toFixed(1)], dropTris: () => dropping.body.geometry.index.count / 3, dropDbg: () => { const b = dropping.body, p = b.geometry.attributes.position.array; let zmax = -1e9; for (let i = 2; i < p.length; i += 3) zmax = Math.max(zmax, p[i]); return { inScene: !!b.parent, pos: b.position.toArray().map((v) => +v.toFixed(2)), scale: b.scale.toArray().map((v) => +v.toFixed(2)), zmax: +zmax.toFixed(2), vis: b.visible, R: +POOP_R.toFixed(1), n: dropping.length, lumps: LUMPS.length, DROP_Z }; }, slowDrop: (k) => { dropSpeed = k; }, project: (f) => new THREE.Vector3(f.x, f.y, f.z).project(camera).toArray(), get selected() { return selected; }, get brainFly() { return brainFly; }, get ready() { return ready; } };
+window.__sim = { world, flies, cam, select, stats, renderer, audio, poops, addDropping,
+  dropState: () => poops.map((p) => [p.anim ? p.anim.phase : 'done', +p.z.toFixed(1)]),
+  dropDbg: () => poops.map((p) => ({ xy: [+p.x.toFixed(1), +p.y.toFixed(1)], R: +p.R.toFixed(1), z: +p.z.toFixed(2),
+    lumps: p.lumps.length, inScene: !!(p.body && p.body.parent), anim: p.anim ? p.anim.phase : null })),
+  slowDrop: (k) => { dropSpeed = k; }, project: (f) => new THREE.Vector3(f.x, f.y, f.z).project(camera).toArray(), get selected() { return selected; }, get brainFly() { return brainFly; }, get ready() { return ready; } };
 requestAnimationFrame(frame);

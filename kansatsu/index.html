@@ -89,7 +89,7 @@ button { font: inherit; font-size: 0.86rem; color: var(--ink); background: var(-
 <main>
   <div class="top">
     <h1>うんちに群がる蠅</h1>
-    <div class="ctrl"><button id="btn-poop" aria-label="うんちを取りかえる" title="うんちを取りかえる">💩<span class="rf">↻</span></button>
+    <div class="ctrl"><button id="btn-poop" aria-label="うんちを増やす（最大3個）" title="うんちを増やす（最大3個・4個目で古いものが沈む）">💩<span class="rf">+</span></button>
     <label class="count" title="蠅の数">
       <select id="n-flies" aria-label="蠅の数">
         <option value="1">🦟 1</option><option value="3">🦟 3</option><option value="5">🦟 5</option><option value="10" selected>🦟 10</option><option value="20">🦟 20</option>
@@ -110,7 +110,7 @@ button { font: inherit; font-size: 0.86rem; color: var(--ink); background: var(-
   <p class="note">体: <a href="https://github.com/NeLy-EPFL/flygym">flygym</a> NeuroMechFly ・ 脳: <a href="https://flywire.ai/">FlyWire</a> / <a href="https://github.com/philshiu/Drosophila_brain_model">Shiu et al.</a></p>
   <p class="note" style="text-align:center"><select class="goto" id="goto" aria-label="ほかのページへ" style="font:inherit;font-size:16px;padding:5px 10px;border-radius:10px"><option value="">ほかのページ…</option><option value="/">ハエたたき（1分）</option><option value="/game2/">ハエたたき 1対1</option><option value="/game/">うんち陣取り</option><option value="/meiro/">迷路実験</option></select></p>
 </main>
-<script type="module" src="/test04/main.js?v=39"></script>
+<script type="module" src="/test04/main.js?v=40"></script>
 <script>
 document.getElementById('goto').addEventListener('change', (e) => { if (e.target.value) location.href = e.target.value; });
 </script>
