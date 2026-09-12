@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>蠅に匂いを覚えさせる — キノコ体の学習</title>
+<meta name="description" content="FlyWire コネクトームの蠅の脳に可塑性を入れて、匂いと罰を対にして覚えさせる実験。">
+<meta property="og:title" content="蠅に匂いを覚えさせる">
+<meta property="og:description" content="キノコ体の KC→MBON シナプスにドーパミン依存の可塑性を入れると、蠅は匂いを覚える。">
+<meta property="og:type" content="website">
+<style>
+  :root{
+    --bg:#0d1014; --panel:#151a20; --line:#252d36; --ink:#e6edf3; --dim:#8a97a6;
+    --a:#59b7ff; --b:#ffb454; --punish:#ff6b6b; --reward:#54d98c; --kc:#cfe6ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.65 system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+    padding-block:22px 40px;padding-left:16px;padding-right:16px;
+    max-width:760px;margin-inline:auto;-webkit-text-size-adjust:100%}
+  h1{font-size:1.32rem;margin:0 0 4px;letter-spacing:.01em}
+  .sub{color:var(--dim);font-size:.82rem;margin:0 0 18px}
+  .sub code{font-size:.95em;color:#a8b6c5}
+  h2{font-size:.78rem;font-weight:600;letter-spacing:.08em;color:var(--dim);
+    text-transform:uppercase;margin:0 0 10px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:14px;margin-bottom:14px}
+  /* --- controls --- */
+  #ctl{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+  button{font:inherit;font-size:.88rem;color:var(--ink);background:#1b2229;
+    border:1px solid var(--line);border-radius:8px;padding:9px 13px;cursor:pointer;
+    -webkit-tap-highlight-color:transparent}
+  button:hover:not(:disabled){background:#222b34;border-color:#37424e}
+  button:disabled{opacity:.4;cursor:default}
+  button.a{border-color:#2c5f88}button.a:hover:not(:disabled){border-color:var(--a)}
+  button.b{border-color:#8a6430}button.b:hover:not(:disabled){border-color:var(--b)}
+  button.p{border-color:#8a3a3a}button.p:hover:not(:disabled){border-color:var(--punish)}
+  button.r{border-color:#2f7a4f}button.r:hover:not(:disabled){border-color:var(--reward)}
+  #status{font-size:.8rem;color:var(--dim);min-height:1.5em;margin:0 0 14px}
+  /* --- kenyon cell field --- */
+  #kcwrap{position:relative}
+  #kc{display:block;width:100%;height:auto;border-radius:6px;background:#0a0d11}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.78rem;color:var(--dim);margin-top:10px}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;
+    vertical-align:baseline}
+  /* --- bars --- */
+  table{width:100%;border-collapse:collapse;font-size:.8rem}
+  th{text-align:left;font-weight:500;color:var(--dim);padding:0 0 6px;font-size:.74rem}
+  td{padding:3px 0;vertical-align:middle}
+  td.nm{width:5.4em;color:#b9c6d4;font-variant-numeric:tabular-nums;white-space:nowrap}
+  td.num{width:3.4em;text-align:right;font-variant-numeric:tabular-nums;
+    color:var(--dim);padding-left:6px}
+  .bar{height:9px;border-radius:5px;background:#1f272f;overflow:hidden}
+  .bar span{display:block;height:100%;border-radius:5px;transition:width .25s}
+  .bar.a span{background:var(--a)}.bar.b span{background:var(--b)}
+  .bar.g span{background:linear-gradient(90deg,#3b4a5a,#7f8fa1)}
+  .tag{font-size:.68rem;padding:1px 5px;border-radius:4px;margin-left:5px;vertical-align:1px}
+  .tag.p{color:#ffb3b3;background:#3a1f1f}
+  .tag.r{color:#a8ebc4;background:#1c3a29}
+  #curve{display:block;width:100%;height:auto;border-radius:6px;background:#0a0d11}
+  .note{font-size:.82rem;color:var(--dim);margin:8px 0 0}
+  .note b{color:#c3cfdb;font-weight:600}
+  footer{margin-top:26px;font-size:.74rem;color:#5d6a78;line-height:1.8}
+  footer a{color:#7f8fa1}
+  .hide{display:none !important}
+</style>
+</head>
+<body>
+
+<h1>蠅に匂いを覚えさせる</h1>
+<p class="sub">キノコ体の <code>KC→MBON</code> シナプスに、ドーパミン依存の可塑性を入れた。
+FlyWire v783 コネクトーム（138,639 ニューロン）＋ Shiu et al. 2024 の LIF モデル、ブラウザ内の WebAssembly で計算。</p>
+
+<div id="ctl">
+  <button class="a" data-act="present" data-odour="A" disabled>匂い A を出す</button>
+  <button class="b" data-act="present" data-odour="B" disabled>匂い B を出す</button>
+  <button class="p" data-act="train" data-odour="A" data-dan="punish" disabled>A ＋ 罰（PPL1）</button>
+  <button class="r" data-act="train" data-odour="A" data-dan="reward" disabled>A ＋ 報酬（PAM）</button>
+  <button data-act="forget" disabled>忘れさせる</button>
+</div>
+<p id="status">脳を読み込んでいます…</p>
+
+<div class="panel">
+  <h2>ケニヨン細胞の疎な符号</h2>
+  <div id="kcwrap"><canvas id="kc" width="720" height="260"></canvas></div>
+  <div class="legend">
+    <span><i style="background:#2a323b"></i>発火していない KC</span>
+    <span><i style="background:var(--a)"></i>匂い A で発火 <b id="pctA">–</b></span>
+    <span><i style="background:var(--b)"></i>匂い B で発火 <b id="pctB">–</b></span>
+    <span><i style="background:#b9a6ff"></i>両方 <b id="pctAB">–</b></span>
+  </div>
+  <p class="note">5,177 個のケニヨン細胞を、FlyWire の実際の細胞体位置（正面から見た図）で並べてある。
+  匂いごとに違う一部だけが発火する — この<b>疎な符号</b>が、記憶を匂いごとに分ける土台になる。</p>
+</div>
+
+<div class="panel">
+  <h2>MBON の応答（キノコ体の出力）</h2>
+  <table id="mbon"><tbody></tbody></table>
+  <p class="note" id="mbonnote">匂いを出すと、そのとき MBON が何 Hz で発火したかが出る。
+  <span class="tag p">罰</span> はドーパミン細胞 PPL1 が、<span class="tag r">報酬</span> は PAM が
+  担当する区画の MBON（下の「何が起きているのか」を参照）。</p>
+</div>
+
+<div class="panel">
+  <h2>学習曲線</h2>
+  <canvas id="curve" width="720" height="220"></canvas>
+  <div class="legend" style="margin-top:8px">
+    <span><i style="background:var(--a)"></i>A（対にした匂い）</span>
+    <span><i style="background:var(--b)"></i>B（対にしていない匂い）</span>
+  </div>
+  <p class="note" id="curvenote">縦軸は、<b>その匂いを符号化しているケニヨン細胞から MBON へ向かうシナプスの平均強度</b>。
+  記憶が実際に蓄えられている場所を直接測っている。1.00 は手つかず。
+  対にした匂い（A）だけが下がり、対にしていない匂い（B）は残る — これが記憶が匂いごとに分かれている、ということ。</p>
+</div>
+
+<div class="panel">
+  <h2>区画ごとのシナプスの強さ</h2>
+  <table id="gain"><tbody></tbody></table>
+  <p class="note">1.00 は生まれたまま、0 は完全に弱まった状態。ドーパミンが届いた区画だけが下がる。</p>
+</div>
+
+<div class="panel">
+  <h2>何が起きているのか</h2>
+  <p class="note">
+  蠅が匂いを覚える場所は<b>キノコ体</b>で、学習則は一つだけ知られている:
+  <b>ケニヨン細胞が発火している最中にドーパミンが届くと、その細胞から MBON へのシナプスが弱まる</b>
+  （Hige et al. 2015、Owald &amp; Waddell 2015）。ここではそれをそのまま実装した:
+  </p>
+  <p class="note" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.76rem;color:#9fb0c0">
+  trace[KC] += 1 （発火のたび、τ=40 ms で減衰）<br>
+  dopa[区画] += w （DAN の発火のたび、τ=100 ms で減衰）<br>
+  gain −= η × trace[KC] × dopa[区画]
+  </p>
+  <p class="note">
+  区画（どの DAN がどの MBON を担当するか）は手で入力していない。
+  同じ区画の DAN と MBON は直接シナプスで結ばれているので、その本数でコネクトームから求めた。
+  出てきた組み合わせは既知の解剖と一致する — MBON11（= MBON-γ1pedc）の相手は
+  PPL101（= PPL1-γ1pedc）で、MBON 1 細胞あたり 626 シナプス、2 位の 39 シナプスを大きく離している。
+  <b>罰</b>側の区画は PPL1 が、<b>報酬</b>側は PAM が担当する、という既知の分業もそのまま出てくる。
+  </p>
+  <p class="note">
+  <b>限界も正直に:</b> 全脳モデルは嗅覚入力を入れると中枢が暴走する（入力を切っても
+  約 47 万 spikes/s が自走し続ける）ので、ここではキノコ体だけを動かし、
+  残りの脳は止めてある。だから「覚えた結果その蠅がどう行動するか」までは、このページでは出せない。
+  KC の点灯率も実際の蠅（数 %）より高い 20〜25% で、これは一律のシナプス重みを使う
+  元モデルの性質。
+  </p>
+</div>
+
+<footer>
+  モデル: <a href="https://github.com/philshiu/Drosophila_brain_model">philshiu/Drosophila_brain_model</a>
+  (Shiu et al., <i>Nature</i> 2024) / コネクトーム: FlyWire v783
+  (<a href="https://codex.flywire.ai/">Dorkenwald, Matsliah et al.</a>, CC-BY 4.0) /
+  細胞型注釈: <a href="https://github.com/flyconnectome/flywire_annotations">Schlegel et al. 2024</a>, CC-BY 4.0.
+  可塑性はこの実装の追加で、元モデルには無い。<br>
+  <a href="/">ハエたたき</a> · <a href="/kansatsu/">蠅観察</a> · <a href="/game/">うんち陣取り</a> · <a href="/meiro/">迷路</a>
+</footer>
+
+<script type="module">
+const $ = (s) => document.querySelector(s);
+const status = $('#status');
+const worker = new Worker(new URL('./brain-worker.js?v=2', import.meta.url), { type: 'module' });
+
+let meta = null;                       // the 'ready' message
+let kcXY = null;                       // 2 * nKC screen coordinates, 0..1
+const fired = { A: null, B: null };    // Uint32Array of KC slots, per odour
+const rates = { A: null, B: null };    // Float32Array per MBON type
+let gains = null;
+const gainPre = { A: 1, B: 1 };        // synapse strength of each odour's own KCs
+let history = [];                      // [{label, A, B}] for the curve
+let trial = 0, busy = false, seed = 1;
+
+// ---------------------------------------------------------------- controls
+const buttons = [...document.querySelectorAll('#ctl button')];
+const enable = (on) => buttons.forEach((b) => { b.disabled = !on; });
+for (const b of buttons) b.onclick = () => {
+  if (busy) return;
+  const act = b.dataset.act;
+  busy = true; enable(false);
+  if (act === 'forget') {
+    status.textContent = '忘れさせています…';
+    worker.postMessage({ type: 'forget' });
+  } else if (act === 'present') {
+    status.textContent = `匂い ${b.dataset.odour} を 1 秒提示しています…`;
+    worker.postMessage({ type: 'present', odour: b.dataset.odour, seed: 1 });
+  } else {
+    status.textContent = `匂い ${b.dataset.odour} と${b.dataset.dan === 'punish' ? '罰' : '報酬'}を 1 秒対にしています…`;
+    worker.postMessage({ type: 'train', odour: b.dataset.odour, dan: b.dataset.dan, seed: ++seed });
+  }
+};
+
+// ---------------------------------------------------------------- drawing
+function drawKC() {
+  const c = $('#kc'), dpr = Math.min(2, devicePixelRatio || 1);
+  const w = c.clientWidth || 720, h = Math.round(w * 0.36);
+  c.width = w * dpr; c.height = h * dpr; c.style.height = h + 'px';
+  const x = c.getContext('2d');
+  x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  x.clearRect(0, 0, w, h);
+  if (!kcXY) return;
+  const n = kcXY.length / 2, pad = 10, r = Math.max(0.9, Math.min(2.2, w / 420));
+  const setA = fired.A, setB = fired.B;
+  const inA = new Uint8Array(n), inB = new Uint8Array(n);
+  if (setA) for (const k of setA) inA[k] = 1;
+  if (setB) for (const k of setB) inB[k] = 1;
+  let na = 0, nb = 0, nab = 0;
+  const col = ['#2a323b', getComputedStyle(document.body).getPropertyValue('--a').trim(),
+    getComputedStyle(document.body).getPropertyValue('--b').trim(), '#b9a6ff'];
+  // draw the dark ones first so the lit cells sit on top
+  for (const pass of [0, 1, 2, 3]) {
+    x.fillStyle = col[pass];
+    x.beginPath();
+    for (let k = 0; k < n; k++) {
+      const kind = inA[k] + 2 * inB[k];
+      if (kind !== pass) continue;
+      if (pass === 1) na++; else if (pass === 2) nb++; else if (pass === 3) nab++;
+      const px = pad + kcXY[2 * k] * (w - 2 * pad), py = pad + kcXY[2 * k + 1] * (h - 2 * pad);
+      x.moveTo(px + r, py); x.arc(px, py, r, 0, 6.2832);
+    }
+    x.fill();
+  }
+  const pc = (v) => (100 * v / n).toFixed(1) + '%';
+  $('#pctA').textContent = setA ? pc(na + nab) : '–';
+  $('#pctB').textContent = setB ? pc(nb + nab) : '–';
+  $('#pctAB').textContent = (setA && setB) ? pc(nab) : '–';
+}
+
+function drawMbon() {
+  const tb = $('#mbon tbody');
+  if (!meta) return;
+  const rows = meta.mbon.map((m, j) => ({ m, j, a: rates.A ? rates.A[j] : 0, b: rates.B ? rates.B[j] : 0 }))
+    .filter((r) => r.a > 1 || r.b > 1)
+    .sort((p, q) => Math.max(q.a, q.b) - Math.max(p.a, p.b));
+  if (!rows.length) { tb.innerHTML = '<tr><td class="note">まだ何も提示していない。</td></tr>'; return; }
+  const top = Math.max(10, ...rows.map((r) => Math.max(r.a, r.b)));
+  tb.innerHTML = '<tr><th>MBON</th><th>匂い A</th><th></th><th>匂い B</th><th></th></tr>' +
+    rows.map((r) => {
+      const tag = r.m.punish > r.m.reward ? '<span class="tag p">罰</span>'
+        : r.m.reward > r.m.punish ? '<span class="tag r">報酬</span>' : '';
+      return `<tr><td class="nm">${r.m.name}${tag}</td>
+        <td><div class="bar a"><span style="width:${(100 * r.a / top).toFixed(1)}%"></span></div></td>
+        <td class="num">${r.a.toFixed(1)}</td>
+        <td><div class="bar b"><span style="width:${(100 * r.b / top).toFixed(1)}%"></span></div></td>
+        <td class="num">${r.b.toFixed(1)}</td></tr>`;
+    }).join('');
+}
+
+function drawGain() {
+  const tb = $('#gain tbody');
+  if (!meta || !gains) { tb.innerHTML = '<tr><td class="note">まだ訓練していない。</td></tr>'; return; }
+  const rows = meta.mbon.map((m, j) => ({ m, g: gains[j] }))
+    .filter((r) => r.m.synapses > 200)
+    .sort((p, q) => p.g - q.g).slice(0, 12);
+  tb.innerHTML = '<tr><th>区画（MBON）</th><th>主な DAN</th><th></th><th></th></tr>' +
+    rows.map((r) => `<tr><td class="nm">${r.m.name}</td>
+      <td class="nm" style="color:#8a97a6;width:5em">${r.m.top || '–'}</td>
+      <td><div class="bar g"><span style="width:${(100 * r.g).toFixed(1)}%"></span></div></td>
+      <td class="num">${r.g.toFixed(2)}</td></tr>`).join('');
+}
+
+function drawCurve() {
+  const c = $('#curve'), dpr = Math.min(2, devicePixelRatio || 1);
+  const w = c.clientWidth || 720, h = Math.round(Math.min(240, Math.max(160, w * 0.3)));
+  c.width = w * dpr; c.height = h * dpr; c.style.height = h + 'px';
+  const x = c.getContext('2d');
+  x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  x.clearRect(0, 0, w, h);
+  const L = 40, R = 10, T = 14, B = 26, pw = w - L - R, ph = h - T - B;
+  const css = (k) => getComputedStyle(document.body).getPropertyValue(k).trim();
+  const pts = history;
+  const lo = Math.min(0.8, ...pts.flatMap((p) => [p.A, p.B])) - 0.02, top = 1.01;
+  x.strokeStyle = '#212831'; x.lineWidth = 1; x.fillStyle = '#6b7887';
+  x.font = '10px system-ui'; x.textAlign = 'right'; x.textBaseline = 'middle';
+  for (let k = 0; k <= 4; k++) {
+    const v = lo + (top - lo) * k / 4, py = T + ph - ph * k / 4;
+    x.beginPath(); x.moveTo(L, py); x.lineTo(w - R, py); x.stroke();
+    x.fillText(v.toFixed(2), L - 6, py);
+  }
+  x.textAlign = 'center'; x.textBaseline = 'top';
+  if (pts.length < 2) {
+    x.fillStyle = '#5d6a78'; x.textBaseline = 'middle';
+    x.fillText('訓練すると、ここにシナプスの弱まり方が出る', L + pw / 2, T + ph / 2);
+    return;
+  }
+  const px = (i) => L + (pts.length === 1 ? pw / 2 : pw * i / (pts.length - 1));
+  const py = (v) => T + ph - ph * Math.max(0, Math.min(1, (v - lo) / (top - lo)));
+  for (const [key, colour] of [['A', css('--a')], ['B', css('--b')]]) {
+    x.strokeStyle = colour; x.lineWidth = 2; x.beginPath();
+    pts.forEach((p, i) => (i ? x.lineTo(px(i), py(p[key])) : x.moveTo(px(i), py(p[key]))));
+    x.stroke();
+    x.fillStyle = colour;
+    pts.forEach((p, i) => { x.beginPath(); x.arc(px(i), py(p[key]), 3, 0, 6.2832); x.fill(); });
+  }
+  x.fillStyle = '#6b7887'; x.textAlign = 'center'; x.textBaseline = 'top';
+  pts.forEach((p, i) => x.fillText(p.label, px(i), T + ph + 6));
+  x.textAlign = 'left';
+}
+
+// the curve needs both odours measured after each trial: the worker is asked
+// for them in turn, and this queue keeps that sequence in one place
+let queue = [];
+function runQueue() {
+  if (!queue.length) { busy = false; enable(true); status.textContent = ready(); return; }
+  const job = queue.shift();
+  status.textContent = job.label;
+  worker.postMessage(job.msg);
+}
+const ready = () => `準備完了 — ${meta.mbon.length} 区画 / 可塑シナプス ${meta.synapses.toLocaleString()} 本 / 訓練 ${trial} 回`;
+
+function recordPoint(label) {
+  history.push({ label, A: gainPre.A, B: gainPre.B });
+  drawCurve();
+}
+// The curve reads the memory where it is actually stored: the mean strength of
+// the synapses leaving the Kenyon cells that each odour lights up. Both odours
+// start at 1.00, and only the paired one should fall.
+
+// ---------------------------------------------------------------- worker
+worker.onmessage = async (e) => {
+  const m = e.data;
+  if (m.type === 'progress') {
+    status.textContent = m.phase === 'wiring' ? 'キノコ体の配線を作っています…'
+      : m.total ? `脳を読み込んでいます… ${(100 * m.loaded / m.total).toFixed(0)}%`
+      : '脳を展開しています…';
+  } else if (m.type === 'busy') {
+    status.textContent = status.textContent.replace(/ \d+%$/, '') + ` ${Math.round(100 * m.done / m.total)}%`;
+  } else if (m.type === 'ready') {
+    meta = m;
+    kcXY = await kcPositions(m.kc);
+    drawKC(); drawMbon(); drawGain(); drawCurve();
+    queue = [
+      { label: '匂い A を測っています…', msg: { type: 'present', odour: 'A', seed: 1 } },
+      { label: '匂い B を測っています…', msg: { type: 'present', odour: 'B', seed: 1 } },
+      { after: () => recordPoint('訓練前') },
+    ];
+    busy = true; enable(false); step();
+  } else if (m.type === 'presented') {
+    fired[m.odour] = m.active; rates[m.odour] = m.rates; gains = m.gains;
+    gainPre[m.odour] = m.gainPre;
+    drawKC(); drawMbon(); drawGain();
+    step();
+  } else if (m.type === 'trained') {
+    trial++;
+    gains = m.gains;
+    // after a training trial, re-measure both odours and add a point
+    queue.unshift(
+      { label: '匂い A を測っています…', msg: { type: 'present', odour: 'A', seed: 1 } },
+      { label: '匂い B を測っています…', msg: { type: 'present', odour: 'B', seed: 1 } },
+      { after: () => recordPoint(`${trial}回`) },
+    );
+    step();
+  } else if (m.type === 'forgotten') {
+    gains = m.gains; trial = 0; history = [];
+    queue = [
+      { label: '匂い A を測っています…', msg: { type: 'present', odour: 'A', seed: 1 } },
+      { label: '匂い B を測っています…', msg: { type: 'present', odour: 'B', seed: 1 } },
+      { after: () => recordPoint('訓練前') },
+    ];
+    step();
+  }
+};
+// walk the queue, running the local steps ('after') without bothering the worker
+function step() {
+  while (queue.length && queue[0].after) { queue.shift().after(); }
+  runQueue();
+}
+// clicking a button jumps the queue: it is emptied, then the click is handled
+for (const b of buttons) b.addEventListener('click', () => { queue.length = 0; }, true);
+
+// FlyWire's representative point per neuron, frontal view, for the KC dots
+async function kcPositions(kcIdx) {
+  const res = await fetch(new URL('../flybrain/data/pos783.bin.gz?v=1', import.meta.url));
+  const buf = await new Response(res.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+  const dv = new DataView(buf);
+  if (String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3)) !== 'FLYP')
+    return null;
+  const n = dv.getUint32(4, true);
+  const xs = new Uint16Array(buf, 8, n), ys = new Uint16Array(buf, 8 + 2 * n, n);
+  const out = new Float32Array(2 * kcIdx.length);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const i of kcIdx) {
+    if (xs[i] < x0) x0 = xs[i]; if (xs[i] > x1) x1 = xs[i];
+    if (ys[i] < y0) y0 = ys[i]; if (ys[i] > y1) y1 = ys[i];
+  }
+  // keep the anatomy's aspect ratio inside a 1 x 0.36 box
+  const sx = x1 - x0 || 1, sy = y1 - y0 || 1, aim = 0.36;
+  const k = Math.min(1 / sx, aim / sy), ox = (1 - sx * k) / 2, oy = (aim - sy * k) / 2;
+  kcIdx.forEach((i, j) => {
+    out[2 * j] = ox + (xs[i] - x0) * k;
+    out[2 * j + 1] = (oy + (ys[i] - y0) * k) / aim;
+  });
+  return out;
+}
+
+addEventListener('resize', () => { drawKC(); drawCurve(); });
+drawCurve();
+worker.postMessage({ type: 'init' });
+</script>
+</body>
+</html>

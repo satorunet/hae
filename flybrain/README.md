@@ -39,6 +39,43 @@ brain.rate(MN9);               // ~83 Hz
 | `outgoing(id)` | a neuron's postsynaptic targets and signed synapse counts |
 | `time`, `activeCount`, `n`, `nnz`, `params` | |
 
+## Learning
+
+On top of the published model — and off until you switch it on, so everything
+above stays bit-identical — the core can run the mushroom body's learning rule:
+a synapse weakens when its presynaptic cell's recent activity coincides with
+dopamine in its compartment.
+
+```js
+brain.setPlasticity({
+  pre: kenyonCells,                            // model indices
+  groups: [{ post: mbonCells, modulators: [[danCell, 1]] }],   // one compartment each
+  eta: 2e-5, tauTrace: 40, tauDopa: 100, gainMin: 0.05,
+});
+brain.stimulate(odourPNs, 100, { byIndex: true });
+brain.stimulate(punishmentDANs, 80, { byIndex: true });
+brain.run(1000);                               // one pairing trial
+brain.gain(0);                                 // that compartment's mean gain, 1 = naive
+brain.gainFrom(odourPNs);                      // mean gain leaving a population
+brain.forget();                                // every gain back to 1
+```
+
+| method | |
+|---|---|
+| `setPlasticity({ pre, groups, ... })` | nominate the synapses and the dopamine compartments |
+| `setPlasticityParams({ eta, tauTrace, tauDopa, gainMin, tauForget, everyMs })` | retune without rebuilding |
+| `dopamine(group, level)` | set a compartment's dopamine directly |
+| `gain(group)` / `gainFrom(pre)` / `gainOf(pre, post)` | read the learned weights |
+| `forget()` | back to naive |
+
+`data/mb783.json` (Kenyon cells, MBONs, DANs and olfactory projection neurons,
+from `tools/build_mb.py`) and `data/mbcompart783.json` (which DANs gate which
+MBON, from `tools/build_compartments.mjs`) are what `test/learn.mjs` and
+[/gakushu/](../gakushu/) feed it. `node test/learn.mjs` reproduces aversive and
+appetitive conditioning: pair one odour with dopamine and its MBON response
+falls over a few trials while a second odour's does not, and only the
+compartments the paired DANs end in are touched.
+
 Model constants (`params`) default to the paper's: dt 0.1 ms, v0 −52 mV,
 threshold −45 mV, τm 20 ms, τsyn 5 ms, refractory 2.2 ms, delay 1.8 ms,
 0.275 mV per synapse, Poisson kick 250 × 0.275 mV.

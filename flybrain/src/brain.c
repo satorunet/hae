@@ -27,6 +27,10 @@
  *   the next input arrives. Only neurons that *could* cross threshold are
  *   stepped - typically a few hundred, out of 127k.
  *
+ * On top of the published model, and off until the caller switches it on:
+ * dopamine-gated depression of a nominated set of synapses (see "plasticity"
+ * below). With it off the core is bit-identical to the model above.
+ *
  * Freestanding C: no libc, no libm. exp() values come in from JS through
  * fb_set_params().
  */
@@ -102,6 +106,43 @@ static i32 P_rfc = 22;           /* refractory, in steps */
 static double *em_pow, *eg_pow;  /* em^n, eg^n for n < POW_N */
 
 static i32 t_step;
+
+/* ------------------------------------------------------------ plasticity
+ * The mushroom body's learning rule: a Kenyon-cell -> MBON synapse weakens
+ * when that KC's recent activity coincides with dopamine in the MBON's
+ * compartment (Hige et al. 2015; Owald & Waddell 2015). Nothing here runs
+ * until fb_plastic_init(), and then only the synapses the caller nominates
+ * are affected.
+ *
+ *   trace[j] += 1        on a spike of a nominated presynaptic neuron j
+ *   dopa[c]  += weight   on a spike of a modulator neuron (a DAN) of group c
+ *   gain     -= eta * trace[pre] * dopa[group]      clipped to [gain_min, 1]
+ *   gain     -> 1 slowly                            (forgetting)
+ * and the synapse delivers w_syn * count * gain.
+ */
+static u32 pl_on;
+static float **rowgain;     /* N: per-synapse gain for a nominated row, or 0 */
+static i32 **rowgrp;        /* N: dopamine group of each synapse in the row, -1 none */
+static u32 *pl_pres;        /* the nominated presynaptic neurons */
+static u32 n_pl_pres;
+static double *dopa;        /* n_group */
+static u32 n_group;
+static double *trace;       /* N, valid as of step t_tr[i] */
+static i32 *t_tr;
+static double *tr_pow;      /* trace decay^n, n < POW_N */
+static u32 *elig, n_elig;   /* presynaptic neurons whose trace is still alive */
+static u32 *mod_at;         /* N -> first modulator entry of that neuron, or NONE */
+static i32 *mod_grp; static float *mod_w; static u32 *mod_next;
+static u32 n_mod, cap_mod;
+static double P_eta = 0.02, P_trdec = 1.0, P_dodec = 1.0, P_gmin = 0.0, P_recov = 0.0;
+static i32 P_every = 10;    /* apply the rule every this many steps */
+#define NONE 0xffffffffu
+
+static inline double trace_at(u32 j, i32 t) {
+    const i32 n = t - t_tr[j];
+    if (n <= 0) return trace[j];
+    return n < POW_N ? trace[j] * tr_pow[n] : 0.0;
+}
 
 /* PCG32 */
 static u64 rng_state = 0x853c49e6748fea9bULL, rng_inc = 0xda3e39cb94b95bdbULL;
@@ -192,6 +233,12 @@ EXPORT(fb_reset) void fb_reset(u32 seed_lo, u32 seed_hi) {
     }
     for (u32 s = 0; s <= D; s++) ring_n[s] = 0;
     n_awake = 0; n_fired = 0; t_step = 0; rec_n = 0; rec_lost = 0;
+    if (pl_on) {                       /* learned gains survive a reset; the rest does not */
+        for (u32 k = 0; k < n_elig; k++) { trace[elig[k]] = 0.0; flags[elig[k]] &= (u8)~8u; }
+        n_elig = 0;
+        for (u32 c = 0; c < n_group; c++) dopa[c] = 0.0;
+        for (u32 i = 0; i < N; i++) t_tr[i] = 0;
+    }
     /* standard PCG32 seeding: stream and state both from the seed */
     const u64 seed = ((u64)seed_hi << 32) | seed_lo;
     rng_state = 0; rng_inc = ((seed ^ 0xda3e39cb94b95bdbULL) << 1u) | 1u;
@@ -233,6 +280,113 @@ EXPORT(fb_set_v) void fb_set_v(u32 i, double mv) {
     v[i] = mv; wake(i);
 }
 
+/* ------------------------------------------------------- plasticity setup */
+EXPORT(fb_plastic_init) i32 fb_plastic_init(u32 groups, u32 mod_capacity) {
+    n_group = groups; cap_mod = mod_capacity; n_mod = 0; n_pl_pres = 0; n_elig = 0;
+    rowgain = (float **)fb_alloc(N * 4);
+    rowgrp  = (i32 **)fb_alloc(N * 4);
+    pl_pres = (u32 *)fb_alloc(N * 4);
+    elig    = (u32 *)fb_alloc(N * 4);
+    trace   = (double *)fb_alloc(N * 8);
+    t_tr    = (i32 *)fb_alloc(N * 4);
+    mod_at  = (u32 *)fb_alloc(N * 4);
+    dopa    = (double *)fb_alloc((groups + 1) * 8);
+    tr_pow  = (double *)fb_alloc(POW_N * 8);
+    mod_grp = (i32 *)fb_alloc(cap_mod * 4);
+    mod_w   = (float *)fb_alloc(cap_mod * 4);
+    mod_next= (u32 *)fb_alloc(cap_mod * 4);
+    if (!rowgain || !rowgrp || !pl_pres || !elig || !trace || !t_tr || !mod_at ||
+        !dopa || !tr_pow || !mod_grp || !mod_w || !mod_next) return -1;
+    for (u32 i = 0; i < N; i++) { rowgain[i] = 0; rowgrp[i] = 0; mod_at[i] = NONE;
+                                  trace[i] = 0.0; t_tr[i] = 0; }
+    for (u32 c = 0; c <= groups; c++) dopa[c] = 0.0;
+    pl_on = 1;
+    return 0;
+}
+
+/* nominate a presynaptic neuron: its whole row gets a gain (1) and a group (-1) */
+EXPORT(fb_plastic_pre) i32 fb_plastic_pre(u32 j) {
+    if (rowgain[j]) return 0;
+    const u32 deg = indptr[j + 1] - indptr[j];
+    float *gn = (float *)fb_alloc((deg ? deg : 1) * 4);
+    i32 *gr = (i32 *)fb_alloc((deg ? deg : 1) * 4);
+    if (!gn || !gr) return -1;
+    for (u32 k = 0; k < deg; k++) { gn[k] = 1.0f; gr[k] = -1; }
+    rowgain[j] = gn; rowgrp[j] = gr; pl_pres[n_pl_pres++] = j;
+    return 0;
+}
+
+/* make the j -> i synapse plastic, in dopamine group c */
+EXPORT(fb_plastic_mark) i32 fb_plastic_mark(u32 j, u32 i, i32 c) {
+    if (!rowgrp[j]) return -1;
+    const u32 b = indptr[j], e = indptr[j + 1];
+    i32 hit = -1;
+    for (u32 q = b; q < e; q++) if (post[q] == i) { rowgrp[j][q - b] = c; hit = 0; }
+    return hit;
+}
+
+/* a modulator neuron: each spike adds w to group c's dopamine */
+EXPORT(fb_mod_add) i32 fb_mod_add(u32 j, i32 c, double w) {
+    if (n_mod >= cap_mod) return -1;
+    mod_grp[n_mod] = c; mod_w[n_mod] = (float)w; mod_next[n_mod] = mod_at[j];
+    mod_at[j] = n_mod++;
+    return 0;
+}
+
+EXPORT(fb_plastic_params) void fb_plastic_params(double eta, double tr_decay,
+                                                 double do_decay, double gain_min,
+                                                 double recover, i32 every) {
+    P_eta = eta; P_trdec = tr_decay; P_dodec = do_decay;
+    P_gmin = gain_min; P_recov = recover; P_every = every > 0 ? every : 1;
+    tr_pow[0] = 1.0;
+    for (u32 k = 1; k < POW_N; k++) tr_pow[k] = tr_pow[k - 1] * tr_decay;
+}
+
+/* forget everything: gains back to 1, traces and dopamine to zero */
+EXPORT(fb_plastic_forget) void fb_plastic_forget(void) {
+    for (u32 k = 0; k < n_pl_pres; k++) {
+        const u32 j = pl_pres[k], deg = indptr[j + 1] - indptr[j];
+        for (u32 q = 0; q < deg; q++) rowgain[j][q] = 1.0f;
+    }
+    for (u32 c = 0; c < n_group; c++) dopa[c] = 0.0;
+    for (u32 k = 0; k < n_elig; k++) { trace[elig[k]] = 0.0; flags[elig[k]] &= (u8)~8u; }
+    n_elig = 0;
+}
+
+EXPORT(fb_dopa_set) void fb_dopa_set(i32 c, double level) {
+    if (c >= 0 && (u32)c < n_group) dopa[c] = level;
+}
+
+/* mean gain of group c's synapses, and how many they are */
+EXPORT(fb_gain_mean) double fb_gain_mean(i32 c) {
+    double s = 0.0; u32 n = 0;
+    for (u32 k = 0; k < n_pl_pres; k++) {
+        const u32 j = pl_pres[k], b = indptr[j], e = indptr[j + 1];
+        for (u32 q = b; q < e; q++)
+            if (rowgrp[j][q - b] == c) { s += rowgain[j][q - b]; n++; }
+    }
+    return n ? s / (double)n : 0.0;
+}
+
+/* mean gain of one presynaptic cell's plastic synapses, or -1 if it has none */
+EXPORT(fb_gain_pre) double fb_gain_pre(u32 j) {
+    if (!rowgain[j]) return -1.0;
+    const u32 b = indptr[j], e = indptr[j + 1];
+    double s = 0.0; u32 n = 0;
+    for (u32 q = b; q < e; q++)
+        if (rowgrp[j][q - b] >= 0) { s += (double)rowgain[j][q - b]; n++; }
+    return n ? s / (double)n : -1.0;
+}
+
+/* the gain of one synapse, or -1 if it is not plastic */
+EXPORT(fb_gain_of) double fb_gain_of(u32 j, u32 i) {
+    if (!rowgain[j]) return -1.0;
+    const u32 b = indptr[j], e = indptr[j + 1];
+    for (u32 q = b; q < e; q++)
+        if (post[q] == i && rowgrp[j][q - b] >= 0) return rowgain[j][q - b];
+    return -1.0;
+}
+
 /* ---------------------------------------------------------------- run */
 EXPORT(fb_run) u32 fb_run(u32 steps) {
     u32 total = 0;
@@ -265,13 +419,16 @@ EXPORT(fb_run) u32 fb_run(u32 steps) {
         for (u32 k = 0; k < nout; k++) {
             const u32 j = out[k];
             if (flags[j] & 2u) continue;                 /* silenced */
-            const u32 e = indptr[j + 1];
-            for (u32 q = indptr[j]; q < e; q++) {
+            const u32 b = indptr[j], e = indptr[j + 1];
+            const float *rg = pl_on ? rowgain[j] : 0;    /* learned gains, if any */
+            for (u32 q = b; q < e; q++) {
                 const u32 i = post[q];
                 const i32 li = ls[i];
                 if (li == t || t - li < rfc_of(i)) continue;   /* refractory: dropped */
                 if (!(flags[i] & 1u)) advance(i, t);
-                g[i] += wsyn * (double)wcount[q];
+                double dg = wsyn * (double)wcount[q];
+                if (rg) dg *= (double)rg[q - b];
+                g[i] += dg;
                 if (!(flags[i] & 1u) && may_cross(i)) wake(i);
             }
         }
@@ -298,11 +455,66 @@ EXPORT(fb_run) u32 fb_run(u32 steps) {
             if (may_cross(i)) wake(i);                   /* only if v_rst is high */
             counts[i]++;
             in[k] = i;
+            if (pl_on) {
+                if (rowgain[i]) {                        /* a nominated presynaptic cell */
+                    trace[i] = trace_at(i, t) + 1.0;
+                    t_tr[i] = t;
+                    if (!(flags[i] & 8u)) { flags[i] |= 8u; elig[n_elig++] = i; }
+                }
+                for (u32 m = mod_at[i]; m != NONE; m = mod_next[m])
+                    dopa[mod_grp[m]] += (double)mod_w[m];   /* a dopaminergic cell */
+            }
             if (rec_n < rec_cap) { rec_idx[rec_n] = i; rec_step[rec_n] = (u32)t; rec_n++; }
             else rec_lost++;
         }
         ring_n[slot_in] = n_fired;
         total += n_fired;
+
+        /* 5: learning - dopamine meets a recently active presynaptic cell */
+        if (pl_on && (t % P_every) == 0) {
+            u32 wet = 0;
+            for (u32 c = 0; c < n_group; c++) if (dopa[c] > 1e-9) wet = 1;
+            if (wet) {
+                u32 keep2 = 0;
+                for (u32 k = 0; k < n_elig; k++) {
+                    const u32 j = elig[k];
+                    const double tr = trace_at(j, t);
+                    if (tr < 1e-4) { flags[j] &= (u8)~8u; trace[j] = 0.0; continue; }
+                    elig[keep2++] = j;
+                    const u32 b = indptr[j], e = indptr[j + 1];
+                    const i32 *gr = rowgrp[j]; float *gn = rowgain[j];
+                    const double dtr = P_eta * tr;
+                    for (u32 q = b; q < e; q++) {
+                        const i32 c = gr[q - b];
+                        if (c < 0) continue;
+                        const double d = dopa[c];
+                        if (d <= 1e-9) continue;
+                        double m = (double)gn[q - b] - dtr * d;
+                        if (m < P_gmin) m = P_gmin;
+                        gn[q - b] = (float)m;
+                    }
+                }
+                n_elig = keep2;
+            } else {
+                u32 keep2 = 0;
+                for (u32 k = 0; k < n_elig; k++) {
+                    const u32 j = elig[k];
+                    if (trace_at(j, t) < 1e-4) { flags[j] &= (u8)~8u; trace[j] = 0.0; }
+                    else elig[keep2++] = j;
+                }
+                n_elig = keep2;
+            }
+            for (u32 c = 0; c < n_group; c++) dopa[c] *= P_dodec;
+            if (P_recov > 0.0) {                          /* forgetting */
+                for (u32 k = 0; k < n_pl_pres; k++) {
+                    const u32 j = pl_pres[k], b = indptr[j], e = indptr[j + 1];
+                    const i32 *gr = rowgrp[j]; float *gn = rowgain[j];
+                    for (u32 q = b; q < e; q++)
+                        if (gr[q - b] >= 0 && gn[q - b] < 1.0f)
+                            gn[q - b] += (float)((1.0 - (double)gn[q - b]) * P_recov);
+                }
+            }
+        }
     }
     return total;
 }

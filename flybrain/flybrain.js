@@ -200,6 +200,94 @@ export class FlyBrain {
     for (const i of this._idx(neurons, byIndex)) this._x.fb_set_silenced(i, on ? 1 : 0);
   }
 
+  /**
+   * Switch on the mushroom body's learning rule: dopamine-gated depression of
+   * the synapses from `pre` (Kenyon cells) onto the neurons of each group.
+   *
+   * A group is one dopamine compartment: the postsynaptic cells whose synapses
+   * it covers, plus the modulator cells (DANs) whose spikes release dopamine
+   * into it. A synapse weakens by eta * (its presynaptic trace) * (the group's
+   * dopamine) per millisecond of overlap, so only the cells that were active
+   * while dopamine arrived lose their drive - which is what makes the memory
+   * specific to one odour.
+   *
+   * @param {object} o
+   * @param {number[]} o.pre        presynaptic (plastic) neurons, model indices
+   * @param {{post:number[], modulators:(number[]|[number,number][])}[]} o.groups
+   *        one entry per compartment; modulators may carry a weight per cell
+   * @param {number} [o.eta=0.02]     learning rate
+   * @param {number} [o.tauTrace=40]  presynaptic trace time constant, ms
+   * @param {number} [o.tauDopa=80]   dopamine time constant, ms
+   * @param {number} [o.gainMin=0]    floor on a synapse's gain
+   * @param {number} [o.tauForget=0]  gains drift back to 1 with this time constant, ms (0 = never)
+   * @param {number} [o.everyMs=1]    how often the rule is applied
+   */
+  setPlasticity(o) {
+    const x = this._x, dt = this.params.dt;
+    const groups = o.groups || [];
+    let nMod = 0;
+    for (const g of groups) nMod += (g.modulators || []).length;
+    if (x.fb_plastic_init(groups.length, Math.max(1, nMod)) !== 0)
+      throw new Error('flybrain: out of memory for plasticity');
+    this.setPlasticityParams(o);
+    for (const j of o.pre) if (x.fb_plastic_pre(j) !== 0)
+      throw new Error('flybrain: out of memory for plasticity');
+    const groupOf = new Map();                 // postsynaptic neuron -> its group
+    const marked = groups.map(() => 0);
+    groups.forEach((g, c) => {
+      for (const i of g.post) groupOf.set(i, c);
+      for (const m of g.modulators || []) {
+        const [i, w] = Array.isArray(m) ? m : [m, 1];
+        x.fb_mod_add(i, c, w);
+      }
+    });
+    for (const j of o.pre) {                   // one pass over the plastic rows
+      const { post } = this.outgoing(j, { byIndex: true });
+      for (const i of post) {
+        const c = groupOf.get(i);
+        if (c !== undefined) { x.fb_plastic_mark(j, i, c); marked[c]++; }
+      }
+    }
+    this._plastic = { groups, marked };
+    return marked;
+  }
+
+  /** Retune the learning rule without rebuilding it. */
+  setPlasticityParams({ eta = 0.02, tauTrace = 40, tauDopa = 80, gainMin = 0,
+                        tauForget = 0, everyMs = 1 } = {}) {
+    const dt = this.params.dt, every = Math.max(1, Math.round(everyMs / dt));
+    this._x.fb_plastic_params(eta, Math.exp(-dt / tauTrace), Math.exp(-every * dt / tauDopa),
+      gainMin, tauForget > 0 ? 1 - Math.exp(-every * dt / tauForget) : 0, every);
+  }
+
+  /** Forget: every learned gain back to 1. */
+  forget() { this._x.fb_plastic_forget(); }
+
+  /** Set a group's dopamine level directly (the modulator cells add to it). */
+  dopamine(group, level) { this._x.fb_dopa_set(group, level); }
+
+  /** Mean gain of a group's plastic synapses - 1 is naive, 0 is fully depressed. */
+  gain(group) { return this._x.fb_gain_mean(group); }
+
+  /**
+   * Mean gain of the plastic synapses leaving each of `pre`, averaged over the
+   * cells that have any - how much of their drive that population has lost.
+   */
+  gainFrom(pre, { byIndex = false } = {}) {
+    let s = 0, n = 0;
+    for (const j of this._idx(pre, byIndex)) {
+      const g = this._x.fb_gain_pre(j);
+      if (g >= 0) { s += g; n++; }
+    }
+    return n ? s / n : 1;
+  }
+
+  /** The gain of one synapse, or -1 if it is not plastic. */
+  gainOf(pre, post, { byIndex = false } = {}) {
+    const [j] = this._idx(pre, byIndex), [i] = this._idx(post, byIndex);
+    return this._x.fb_gain_of(j, i);
+  }
+
   /** Add `mv` to the membrane potential of neurons right now. */
   kick(neurons, mv = 10, { byIndex = false } = {}) {
     for (const i of this._idx(neurons, byIndex)) this._x.fb_kick(i, mv);
