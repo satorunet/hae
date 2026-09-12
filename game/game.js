@@ -125,7 +125,13 @@ class Fly {
     else if (kind === 'black') { tint = [0.2, 0.2, 0.21].map((v) => v * j()); k = rr(0.8, 1.3); } // housefly-like
     else tint = TINTS[Math.floor(R() * TINTS.length)].map((v) => v * j());
     this.kind = kind;
-    this.body.skin.material = flyMaterial(tint.map((v) => v * k), kind === 'green');
+    // eye colour: most are the usual brick red, a good few much darker, the odd one orange
+    const e = R();
+    const eye = e < 0.52 ? [rr(0.9, 1.12), rr(0.9, 1.12), rr(0.9, 1.12)]
+      : e < 0.82 ? [rr(0.45, 0.64), rr(0.68, 0.92), rr(0.78, 1.02)]
+        : e < 0.94 ? [rr(0.18, 0.34), rr(0.55, 0.8), rr(0.8, 1.05)]
+          : [rr(1.08, 1.28), rr(1.4, 1.9), rr(0.95, 1.2)];
+    this.body.skin.material = flyMaterial(tint.map((v) => v * k), kind === 'green', eye);
     const girth = rr(0.88, 1.3);
     this.body.byName.c_abdomen12.obj.scale.set(rr(0.9, 1.18), girth, girth * rr(0.92, 1.08));
     Object.assign(this, {
@@ -197,6 +203,8 @@ class Fly {
     W.reach = approach(W.reach, (F && F.reach) || (this.state === 'land' && this.stateT < 0.1) ? 1 : 0, dt, 0.05);
     W.jump = approach(W.jump, this.state === 'takeoff' && F.pushing ? 1 : 0, dt, 0.003);
     this.prob = approach(this.prob, this.state === 'feed' ? clamp(this.drive.MN9 / 55, 0.35, 1) : 0, dt, 0.08);
+    // the mouthparts are never still: dabbing fast at the food, fidgeting the rest of the time
+    this.dabPh = (this.dabPh || 0) + dt * TAU * (this.state === 'feed' ? 7.5 + (this.id % 5) * 0.9 : 1.7);
     if (this.state === 'groom') { this.groomPh += dt * TAU * 5.5; this.groomSlow += dt * TAU * 0.35; }
     const flapping = this.state === 'flight' || this.state === 'landing' || (this.state === 'takeoff' && F.flapOn) || (this.state === 'held' && this.held.buzz);
     this.flap = approach(this.flap, flapping ? 1 : 0, dt, flapping ? 0.006 : 0.02);
@@ -399,8 +407,10 @@ class Fly {
       body.setLeg(leg, a);
     }
     const jset = (n, v) => { const j = body.joints[n]; if (j) j.q = v; };
-    jset('c_head-c_rostrum-pitch', -1.25 * this.prob);
-    jset('c_rostrum-c_haustellum-pitch', -1.6 * this.prob);
+    const dab = Math.sin(this.dabPh || 0), dab2 = Math.sin((this.dabPh || 0) * 1.7 + 1.1);
+    const idle = this.prob < 0.05 ? 1 : 0;                 // even a resting fly works its mouth a little
+    jset('c_head-c_rostrum-pitch', -1.25 * this.prob * (1 + 0.16 * dab) - idle * 0.07 * (0.5 + 0.5 * dab));
+    jset('c_rostrum-c_haustellum-pitch', -1.6 * this.prob * (0.76 + 0.34 * dab2) - idle * 0.11 * (0.5 + 0.5 * dab2));
     jset('c_thorax-c_head-pitch', 0.18 * this.prob + (this.state === 'groom' ? 0.12 * Math.sin(this.groomPh * 0.5) : 0));
     jset('c_thorax-c_abdomen12-pitch', -0.12 * this.w.tuck);
     for (const s of ['l', 'r']) jset(`c_thorax-${s}_haltere-pitch`, this.flap * 0.9 * Math.sin(this.wingPh + Math.PI));
@@ -486,16 +496,17 @@ function skyEnv() {
   ENV = new THREE.PMREMGenerator(renderer).fromScene(es, 0.02).texture;
   return ENV;
 }
-function flyMaterial(tint, metallic) {
+function flyMaterial(tint, metallic, eye) {
   const m = metallic
     ? new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.85, clearcoat: 0.35, clearcoatRoughness: 0.35,
         iridescence: 0.3, iridescenceIOR: 1.4, iridescenceThicknessRange: [300, 500], envMap: skyEnv(), envMapIntensity: 0.9 })
     : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.52, metalness: 0 });
   const uTint = { value: new THREE.Color(...tint) };
+  const uEye = { value: new THREE.Color(...(eye || [1, 1, 1])) };     // the eyes get their own multiplier
   m.onBeforeCompile = (sh) => {
-    sh.uniforms.uTint = uTint;
-    sh.fragmentShader = 'uniform vec3 uTint;\n' + sh.fragmentShader.replace('#include <color_fragment>',
-      '#include <color_fragment>\n  diffuseColor.rgb *= mix(uTint, vec3(1.0), step(6.0 * vColor.g + 0.01, vColor.r));   // eyes keep their red');
+    sh.uniforms.uTint = uTint; sh.uniforms.uEye = uEye;
+    sh.fragmentShader = 'uniform vec3 uTint;\nuniform vec3 uEye;\n' + sh.fragmentShader.replace('#include <color_fragment>',
+      '#include <color_fragment>\n  diffuseColor.rgb *= mix(uTint, uEye, step(6.0 * vColor.g + 0.01, vColor.r));   // the eyes keep out of the body tint');
   };
   m.customProgramCacheKey = () => (metallic ? 'fly-metal' : 'fly');
   return m;

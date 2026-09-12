@@ -107,8 +107,12 @@ button { font: inherit; font-size: 0.86rem; color: var(--ink); background: var(-
       <div class="now" id="b-now"></div>
     </div>
   </div>
-  <p class="note"><a href="/">🪰 ハエたたき（1分）</a> ・ <a href="/game/">うんち陣取り</a> ・ <a href="/game2/">ハエたたき対戦</a> ・ 体: <a href="https://github.com/NeLy-EPFL/flygym">flygym</a> NeuroMechFly ・ 脳: <a href="https://flywire.ai/">FlyWire</a> / <a href="https://github.com/philshiu/Drosophila_brain_model">Shiu et al.</a></p>
+  <p class="note">体: <a href="https://github.com/NeLy-EPFL/flygym">flygym</a> NeuroMechFly ・ 脳: <a href="https://flywire.ai/">FlyWire</a> / <a href="https://github.com/philshiu/Drosophila_brain_model">Shiu et al.</a></p>
+  <p class="note" style="text-align:center"><select class="goto" id="goto" aria-label="ほかのページへ" style="font:inherit;font-size:16px;padding:5px 10px;border-radius:10px"><option value="">ほかのページ…</option><option value="/">ハエたたき（1分）</option><option value="/game2/">ハエたたき 1対1</option><option value="/game/">うんち陣取り</option></select></p>
 </main>
-<script type="module" src="/test04/main.js?v=38"></script>
+<script type="module" src="/test04/main.js?v=39"></script>
+<script>
+document.getElementById('goto').addEventListener('change', (e) => { if (e.target.value) location.href = e.target.value; });
+</script>
 </body>
 </html>

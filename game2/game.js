@@ -45,7 +45,7 @@ const PIN_T = 0.34;              // it is held down and struggling for this long
 const P_FREE = 0.12;             // wriggles out from under the mesh, unhurt
 const P_HURT = 0.32;             // or lives, but broken: it has to be hit again
 const SWAT_H = 46;               // how high the hand starts
-const BAIT = [[-15, 7], [14, 11], [1, -16]];   // where the three droppings go: the same on both devices
+const BAIT = [[-17, 8], [16, 12], [1, -18]];   // where the three droppings go: the same on both devices
 const TICK = 20;                 // ms of brain time per exchange with the worker
 const H = 0.002;                 // s, body step
 const WALK_Z = 1.12;             // thorax height above the ground while walking (flygym physics)
@@ -61,9 +61,11 @@ const HOLD_Z = 7;                // a caught fly is carried this high
 // Each dropping is a few log-like lumps around its own centre
 // (lump: x, y, angle, half-length, radius, height, extra height at the ridge)
 const poops = [];                                          // every dropping on the field
-function makeLumps() {
-  const k = rnd(0.75, 1.25);                               // how much there is
-  const n = 1 + Math.floor(Math.random() * (k > 1 ? 5 : 4)), pile = Math.random() < 0.65, out = [];
+// nMin / kMin put a floor under how much there is. Left alone this comes out as a single small
+// lump often enough that a field of three reads as though two of the droppings are missing.
+function makeLumps(nMin = 1, kMin = 0.75) {
+  const k = rnd(kMin, kMin + 0.5);                          // how much there is
+  const n = nMin + Math.floor(Math.random() * 3), pile = Math.random() < 0.65, out = [];
   for (let i = 0; i < n; i++) {
     const r = i === 0 ? 0 : (pile ? rnd(0.8, 2.4) : rnd(2.2, 4.2)) * k, a = rnd(0, Math.PI * 2);
     out.push([Math.cos(a) * r, Math.sin(a) * r, rnd(0, Math.PI * 2), rnd(1.4, 3.8) * k, rnd(2.2, 3.6) * Math.sqrt(k), rnd(1.5, 2.6) * Math.sqrt(k),
@@ -141,7 +143,13 @@ class Fly {
     else if (kind === 'black') { tint = [0.2, 0.2, 0.21].map((v) => v * j()); k = rr(0.8, 1.3); } // housefly-like
     else tint = TINTS[Math.floor(R() * TINTS.length)].map((v) => v * j());
     this.kind = kind;
-    this.body.skin.material = flyMaterial(tint.map((v) => v * k), kind === 'green');
+    // eye colour: most are the usual brick red, a good few much darker, the odd one orange
+    const e = R();
+    const eye = e < 0.52 ? [rr(0.9, 1.12), rr(0.9, 1.12), rr(0.9, 1.12)]
+      : e < 0.82 ? [rr(0.45, 0.64), rr(0.68, 0.92), rr(0.78, 1.02)]
+        : e < 0.94 ? [rr(0.18, 0.34), rr(0.55, 0.8), rr(0.8, 1.05)]
+          : [rr(1.08, 1.28), rr(1.4, 1.9), rr(0.95, 1.2)];
+    this.body.skin.material = flyMaterial(tint.map((v) => v * k), kind === 'green', eye);
     const girth = rr(0.88, 1.3);
     this.body.byName.c_abdomen12.obj.scale.set(rr(0.9, 1.18), girth, girth * rr(0.92, 1.08));
     Object.assign(this, {
@@ -216,6 +224,8 @@ class Fly {
     W.reach = approach(W.reach, (F && F.reach) || (this.state === 'land' && this.stateT < 0.1) ? 1 : 0, dt, 0.05);
     W.jump = approach(W.jump, this.state === 'takeoff' && F.pushing ? 1 : 0, dt, 0.003);
     this.prob = approach(this.prob, this.state === 'feed' ? clamp(this.drive.MN9 / 55, 0.35, 1) : 0, dt, 0.08);
+    // the mouthparts are never still: dabbing fast at the food, fidgeting the rest of the time
+    this.dabPh = (this.dabPh || 0) + dt * TAU * (this.state === 'feed' ? 7.5 + (this.id % 5) * 0.9 : 1.7);
     if (this.state === 'groom') { this.groomPh += dt * TAU * 5.5; this.groomSlow += dt * TAU * 0.35; }
     const flapping = this.state === 'flight' || this.state === 'landing' || (this.state === 'takeoff' && F.flapOn)
       || (this.state === 'held' && this.held.buzz) || (this.hurt && this.hurtBuzz) || (this.dead && this.throeBuzz);
@@ -306,28 +316,34 @@ class Fly {
     this.speed = Math.abs(vx);
   }
 
-  // it does not simply stop: the legs jerk, the wings rattle, and it all dies down over a few seconds
+  // it does not simply stop, and no two go the same way: DEATHS holds the shapes this takes
   deadStep(dt) {
-    const d = this.dth;
+    const d = this.dth, st = d.st;
     d.t += dt;
     const k = Math.max(0, 1 - d.t / d.span);                 // how much fight is left
     if ((d.T -= dt) <= 0) {
       d.on = !d.on;
-      d.T = d.on ? rnd(0.04, 0.2) * (0.35 + k) : rnd(0.12, 0.8) / (0.12 + k);
-      d.dL = d.on ? rnd(-1.6, 1.6) * k : 0;
-      d.dR = d.on ? rnd(-1.6, 1.6) * k : 0;
-      d.buzz = d.on && Math.random() < 0.5 * k;
-      d.jolt = d.on ? rnd(-1, 1) * k : 0;
+      d.T = d.on ? rnd(st.on[0], st.on[1]) * (0.35 + k) : rnd(st.off[0], st.off[1]) / (0.12 + k);
+      d.dL = d.on ? rnd(-1.6, 1.6) * st.leg * k : 0;
+      d.dR = d.on ? rnd(-1.6, 1.6) * st.leg * k : 0;
+      d.buzz = d.on && Math.random() < st.buzz * (0.35 + k);
+      d.jolt = d.on ? rnd(-1, 1) * st.jolt * k : 0;
     }
     this.throeBuzz = d.buzz;
-    this.cpg.step(dt * 2.6, d.dL, d.dR);                     // legs still firing, out of time with each other
+    this.cpg.step(dt * st.rate, d.dL, d.dR);                 // legs still firing, out of time with each other
     const w = (d.on ? 1 : 0.15) * k;
     this.yaw = d.yaw0 + d.jolt * 0.12 * w;
-    this.roll = d.roll0 + Math.sin(d.t * 27) * 0.09 * w;
-    this.pitch = d.pitch0 + Math.sin(d.t * 21 + 1.3) * 0.07 * w;
+    this.roll = d.roll0 + Math.sin(d.t * d.hz) * 0.09 * w * st.jolt;
+    this.pitch = d.pitch0 + Math.sin(d.t * d.hz * 0.78 + 1.3) * 0.07 * w * st.jolt;
     this.x = d.x0 + Math.cos(d.yaw0) * d.jolt * 0.25 * w;
     this.y = d.y0 + Math.sin(d.yaw0) * d.jolt * 0.25 * w;
-    if (d.t >= d.span) settleDead(this);
+    if (d.t >= d.span) {
+      if (d.encore > 0) {                                    // one last kick, long after it looked over
+        const q = d.encore;
+        d.encore = 0; d.t = 0; d.span = q + rnd(0.3, 0.9); d.T = q;
+        d.on = false; d.dL = d.dR = 0; d.buzz = false; d.jolt = 0;
+      } else settleDead(this);
+    }
   }
 
   // knocked over and unable to fly: it buzzes its wings flat against the ground and skids along on its side
@@ -467,8 +483,10 @@ class Fly {
       body.setLeg(leg, a);
     }
     const jset = (n, v) => { const j = body.joints[n]; if (j) j.q = v; };
-    jset('c_head-c_rostrum-pitch', -1.25 * this.prob);
-    jset('c_rostrum-c_haustellum-pitch', -1.6 * this.prob);
+    const dab = Math.sin(this.dabPh || 0), dab2 = Math.sin((this.dabPh || 0) * 1.7 + 1.1);
+    const idle = this.prob < 0.05 ? 1 : 0;                 // even a resting fly works its mouth a little
+    jset('c_head-c_rostrum-pitch', -1.25 * this.prob * (1 + 0.16 * dab) - idle * 0.07 * (0.5 + 0.5 * dab));
+    jset('c_rostrum-c_haustellum-pitch', -1.6 * this.prob * (0.76 + 0.34 * dab2) - idle * 0.11 * (0.5 + 0.5 * dab2));
     jset('c_thorax-c_head-pitch', 0.18 * this.prob + (this.state === 'groom' ? 0.12 * Math.sin(this.groomPh * 0.5) : 0));
     jset('c_thorax-c_abdomen12-pitch', -0.12 * this.w.tuck);
     for (const s of ['l', 'r']) jset(`c_thorax-${s}_haltere-pitch`, this.flap * 0.9 * Math.sin(this.wingPh + Math.PI));
@@ -481,6 +499,7 @@ class Fly {
     const ghost = blur > 0.02 && this.wingOpen > 0.8 && this.flap > 0.5;
     body.wingMat.opacity = 1 - 0.62 * (ghost ? blur : 0); body.ghostMat.opacity = 0.075 * blur;
     for (const w of body.wings) {
+      if (w.detached) continue;                              // that one is lying on the ground
       body.wingQuat(w, ...stroke(this.wingPh), beta, q);
       w.obj.quaternion.copy(w.wing.qRest).slerp(q, this.wingOpen);
       w.wing.ghosts.forEach((g, k) => {
@@ -568,16 +587,17 @@ function skyEnv() {
   ENV = new THREE.PMREMGenerator(renderer).fromScene(es, 0.02).texture;
   return ENV;
 }
-function flyMaterial(tint, metallic) {
+function flyMaterial(tint, metallic, eye) {
   const m = metallic
     ? new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.85, clearcoat: 0.35, clearcoatRoughness: 0.35,
         iridescence: 0.3, iridescenceIOR: 1.4, iridescenceThicknessRange: [300, 500], envMap: skyEnv(), envMapIntensity: 0.9 })
     : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.52, metalness: 0 });
   const uTint = { value: new THREE.Color(...tint) };
+  const uEye = { value: new THREE.Color(...(eye || [1, 1, 1])) };     // the eyes get their own multiplier
   m.onBeforeCompile = (sh) => {
-    sh.uniforms.uTint = uTint;
-    sh.fragmentShader = 'uniform vec3 uTint;\n' + sh.fragmentShader.replace('#include <color_fragment>',
-      '#include <color_fragment>\n  diffuseColor.rgb *= mix(uTint, vec3(1.0), step(6.0 * vColor.g + 0.01, vColor.r));   // eyes keep their red');
+    sh.uniforms.uTint = uTint; sh.uniforms.uEye = uEye;
+    sh.fragmentShader = 'uniform vec3 uTint;\nuniform vec3 uEye;\n' + sh.fragmentShader.replace('#include <color_fragment>',
+      '#include <color_fragment>\n  diffuseColor.rgb *= mix(uTint, uEye, step(6.0 * vColor.g + 0.01, vColor.r));   // the eyes keep out of the body tint');
   };
   m.customProgramCacheKey = () => (metallic ? 'fly-metal' : 'fly');
   return m;
@@ -908,7 +928,11 @@ function startGame() {
   $('result').hidden = true;
   $('again').textContent = 'もう一度';
   const shapes = [];
-  for (const [x, y] of BAIT) { const shp = makeLumps(); shapes.push({ lumps: shp.lumps, R: shp.R, noff: shp.noff }); dropPoop(x, y, 0, shp); }
+  for (const [x, y] of BAIT) {
+    const shp = makeLumps(3, 0.85);                 // never a lone speck: all three have to draw flies
+    shapes.push({ lumps: shp.lumps, R: shp.R, noff: shp.noff });
+    dropPoop(x, y, 0, shp);
+  }
   hud();
   if (net.host) { net.send({ t: 'reset', shapes }); netSendGame(); }
 }
@@ -1152,18 +1176,91 @@ function squash(f, i) {
   for (const w of b.wings) for (const g of w.wing.ghosts) g.visible = false;
   b.root.scale.set(f.s * 1.16, f.s * 1.16, f.s * 0.3);            // squashed flat
   f.z = groundZ(f.x, f.y) + 0.22 * f.s;
-  f.yaw += rnd(-0.5, 0.5);
+  f.yaw += rnd(-0.6, 0.6);
   f.pitch = rnd(-0.3, 0.3);
-  const r = Math.random();                                        // how it happens to land
-  f.roll = r < 0.42 ? Math.PI + rnd(-0.35, 0.35)                  // on its back, the way you picture it
-    : r < 0.8 ? (Math.random() < 0.5 ? 1 : -1) * (Math.PI / 2 + rnd(-0.5, 0.5))   // or over on one side
-      : rnd(-0.45, 0.45);                                         // or face down where it stood
-  // it takes a while to stop: bursts of leg and wing activity, thinning out
-  f.dth = { t: 0, span: rnd(2.2, 5.0), T: rnd(0.02, 0.1), on: true, dL: rnd(-1.6, 1.6), dR: rnd(-1.6, 1.6),
-    buzz: true, jolt: rnd(-1, 1), x0: f.x, y0: f.y, yaw0: f.yaw, pitch0: f.pitch, roll0: f.roll };
+  // it is flattened along its own back-to-belly axis, so that axis has to stay near vertical:
+  // rolled onto its side it would stand up on edge instead of lying squashed
+  f.roll = Math.random() < 0.55 ? Math.PI + rnd(-0.45, 0.45) : rnd(-0.45, 0.45);
+  dismember(f);
+  // it takes a while to stop, and how long and how hard comes from DEATHS
+  const st = pickDeath();
+  f.dth = { st, t: 0, span: rnd(st.span[0], st.span[1]), T: rnd(0.01, 0.08), on: true,
+    hz: rnd(17, 34), dL: rnd(-1.6, 1.6) * st.leg, dR: rnd(-1.6, 1.6) * st.leg,
+    buzz: Math.random() < st.buzz, jolt: rnd(-1, 1) * st.jolt,
+    encore: Math.random() < 0.28 ? rnd(0.6, 2.6) : 0,             // some of them come back for one more
+    x0: f.x, y0: f.y, yaw0: f.yaw, pitch0: f.pitch, roll0: f.roll };
   f.pose(0.001, 0, true);
   corpses.push(f);
-  while (corpses.length > CORPSE_MAX) { const o = corpses.shift(); scene.remove(o.body.root, o.body.skin); }
+  while (corpses.length > CORPSE_MAX) sweepAway(corpses.shift());
+}
+function sweepAway(o) {
+  scene.remove(o.body.root, o.body.skin);
+  for (const m of o.parts || []) scene.remove(m);
+}
+// the ways a fly can go: over at once, the usual, a long time about it, all wings, or all legs
+const DEATHS = [
+  { w: 18, span: [0.4, 1.3], on: [0.03, 0.12], off: [0.08, 0.30], buzz: 0.25, leg: 1.1, jolt: 0.7, rate: 2.4 },
+  { w: 34, span: [1.8, 4.2], on: [0.04, 0.20], off: [0.12, 0.70], buzz: 0.50, leg: 1.5, jolt: 1.0, rate: 2.6 },
+  { w: 20, span: [4.0, 9.5], on: [0.05, 0.30], off: [0.30, 1.70], buzz: 0.35, leg: 1.2, jolt: 0.8, rate: 2.0 },
+  { w: 16, span: [2.0, 5.5], on: [0.12, 0.50], off: [0.06, 0.28], buzz: 0.90, leg: 0.5, jolt: 1.5, rate: 1.4 },
+  { w: 12, span: [1.5, 4.5], on: [0.05, 0.20], off: [0.15, 0.90], buzz: 0.04, leg: 2.0, jolt: 0.5, rate: 3.2 },
+];
+function pickDeath() {
+  let r = Math.random() * DEATHS.reduce((a, d) => a + d.w, 0);
+  for (const d of DEATHS) if ((r -= d.w) <= 0) return d;
+  return DEATHS[1];
+}
+// bits that come off: a wing torn away, the head off, legs scattered. The part is hidden on the
+// body (the bone is collapsed) and a small stand-in is dropped on the ground beside it.
+const partGeo = new THREE.SphereGeometry(1, 8, 6);
+const partMats = new Map();
+function partMat(hex, wing) {
+  const key = wing ? 'wing' : hex;
+  let m = partMats.get(key);
+  if (!m) {
+    m = wing
+      ? new THREE.MeshStandardMaterial({ color: 0xeae8e2, roughness: 0.3, transparent: true, opacity: 0.55 })
+      : new THREE.MeshStandardMaterial({ color: hex, roughness: 0.6 });
+    partMats.set(key, m);
+  }
+  return m;
+}
+function dropPart(f, kind) {
+  const m = new THREE.Mesh(partGeo, partMat(f.body.skin.material.color.getHex(), kind === 'wing'));
+  const a = rnd(0, TAU), r = rnd(0.7, 3.0) * f.s;
+  const x = f.x + Math.cos(a) * r, y = f.y + Math.sin(a) * r;
+  if (kind === 'wing') m.scale.set(1.3 * f.s, 0.45 * f.s, 0.05 * f.s);
+  else if (kind === 'head') m.scale.set(0.34 * f.s, 0.32 * f.s, 0.28 * f.s);
+  else m.scale.set(0.5 * f.s, 0.075 * f.s, 0.075 * f.s);
+  m.position.set(x, y, groundZ(x, y) + (kind === 'head' ? 0.3 : 0.07) * f.s);
+  m.rotation.z = rnd(0, TAU);
+  m.castShadow = kind === 'head';
+  scene.add(m);
+  (f.parts ??= []).push(m);
+}
+function dismember(f) {
+  const b = f.body;
+  if (Math.random() < 0.22) {                        // a wing torn off, sometimes both
+    const both = Math.random() < 0.3, pick = Math.random() < 0.5 ? 0 : 1;
+    b.wings.forEach((w, i) => {
+      if (!both && i !== pick) return;
+      w.obj.visible = false; w.detached = true;
+      dropPart(f, 'wing');
+    });
+  }
+  if (Math.random() < 0.09 && b.byName.c_head) {      // and once in a while the head goes
+    b.byName.c_head.obj.scale.setScalar(0.015);
+    dropPart(f, 'head');
+  }
+  if (Math.random() < 0.18) {                        // or a leg or three
+    const legs = [...LEGS].sort(() => Math.random() - 0.5).slice(0, 1 + Math.floor(Math.random() * 3));
+    for (const leg of legs) {
+      const c = b.byName[leg + '_coxa'];
+      if (!c) continue;
+      c.obj.scale.setScalar(0.015);
+      dropPart(f, 'leg');
+    }
+  }
 }
 // finally still: legs drawn up the way a dead fly's are, wings folded back down
 function settleDead(f) {
@@ -1176,7 +1273,7 @@ function settleDead(f) {
   f.x = f.dth.x0; f.y = f.dth.y0;
   f.pose(0.001, 0, false);
 }
-function clearCorpses() { for (const f of corpses) scene.remove(f.body.root, f.body.skin); corpses.length = 0; }
+function clearCorpses() { for (const f of corpses) sweepAway(f); corpses.length = 0; }
 // when a swing takes more than one, the number pops where it happened
 const hitPops = [];
 function hitPop(x, y, z, k, by) {

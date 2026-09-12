@@ -89,7 +89,13 @@ class Fly {
     else if (kind === 'black') { tint = [0.2, 0.2, 0.21].map((v) => v * j()); k = rnd(0.8, 1.3); } // housefly-like
     else tint = TINTS[Math.floor(Math.random() * TINTS.length)].map((v) => v * j());
     this.kind = kind;
-    this.body.skin.material = flyMaterial(tint.map((v) => v * k), kind === 'green');
+    // eye colour: most are the usual brick red, a good few much darker, the odd one orange
+    const e = Math.random();                     // this page has no seeded rng: nothing to keep in step
+    const eye = e < 0.52 ? [rnd(0.9, 1.12), rnd(0.9, 1.12), rnd(0.9, 1.12)]
+      : e < 0.82 ? [rnd(0.45, 0.64), rnd(0.68, 0.92), rnd(0.78, 1.02)]
+        : e < 0.94 ? [rnd(0.18, 0.34), rnd(0.55, 0.8), rnd(0.8, 1.05)]
+          : [rnd(1.08, 1.28), rnd(1.4, 1.9), rnd(0.95, 1.2)];
+    this.body.skin.material = flyMaterial(tint.map((v) => v * k), kind === 'green', eye);
     const girth = rnd(0.88, 1.3);
     this.body.byName.c_abdomen12.obj.scale.set(rnd(0.9, 1.18), girth, girth * rnd(0.92, 1.08));
     Object.assign(this, {
@@ -465,16 +471,17 @@ function skyEnv() {
   ENV = new THREE.PMREMGenerator(renderer).fromScene(es, 0.02).texture;
   return ENV;
 }
-function flyMaterial(tint, metallic) {
+function flyMaterial(tint, metallic, eye) {
   const m = metallic
     ? new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.85, clearcoat: 0.35, clearcoatRoughness: 0.35,
         iridescence: 0.3, iridescenceIOR: 1.4, iridescenceThicknessRange: [300, 500], envMap: skyEnv(), envMapIntensity: 0.9 })
     : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.52, metalness: 0 });
   const uTint = { value: new THREE.Color(...tint) };
+  const uEye = { value: new THREE.Color(...(eye || [1, 1, 1])) };     // the eyes get their own multiplier
   m.onBeforeCompile = (sh) => {
-    sh.uniforms.uTint = uTint;
-    sh.fragmentShader = 'uniform vec3 uTint;\n' + sh.fragmentShader.replace('#include <color_fragment>',
-      '#include <color_fragment>\n  diffuseColor.rgb *= mix(uTint, vec3(1.0), step(6.0 * vColor.g + 0.01, vColor.r));   // eyes keep their red');
+    sh.uniforms.uTint = uTint; sh.uniforms.uEye = uEye;
+    sh.fragmentShader = 'uniform vec3 uTint;\nuniform vec3 uEye;\n' + sh.fragmentShader.replace('#include <color_fragment>',
+      '#include <color_fragment>\n  diffuseColor.rgb *= mix(uTint, uEye, step(6.0 * vColor.g + 0.01, vColor.r));   // the eyes keep out of the body tint');
   };
   m.customProgramCacheKey = () => (metallic ? 'fly-metal' : 'fly');
   return m;

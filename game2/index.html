@@ -126,6 +126,11 @@ body.solo .p1 { display: none; }
 #lobby-status { min-height: 1.4em; font-size: 0.86rem; color: var(--accent); text-align: center; }
 #lobby-status.spin::after { content: ''; animation: dots 1.2s steps(4, end) infinite; }
 @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
+.goto {
+  width: 100%; min-height: 46px; margin-top: 2px; font: inherit; font-size: 16px;
+  color: var(--ink-2); background: var(--btn); border: 1px solid var(--ring); border-radius: 12px;
+  padding: 0 12px; text-align: center; text-align-last: center;
+}
 .note { color: var(--muted); font-size: 0.72rem; line-height: 1.7; margin: 6px 0 0; text-align: center; }
 .note a { color: #7fb0ea; }
 
@@ -173,21 +178,22 @@ body.solo .p1 { display: none; }
 
     <div id="lobby-menu">
       <div class="warn-t">⚠️ 閲覧注意</div>
-      <p>蠅の脳の研究サイトです。うんちと、それに群がる蠅が大きく映ります。音が出ます。</p>
+      <p>うんちと、それに群がる蠅が大きく映ります。音が出ます。</p>
 
-      <h2>ハエたたき — 1対1</h2>
-      <ol class="rules">
-        <li>3・2・1 で開始。うんちに集まった蠅が <b>50匹</b> になります</li>
-        <li>蠅をねらって<b>タップ</b>すると手が落ちてきて、その場にいた蠅を潰します</li>
-        <li><b>45秒</b>で多く潰した方の勝ち。同じ手は約0.5秒に1回まで</li>
-      </ol>
-      <p>手が迫ると蠅は<b>気づいて逃げます</b>（本物の逃避反応と同じしくみ）。指でなぞると視点だけ動きます。</p>
+      <h2>ハエたたき 1対1</h2>
+      <p>タップで叩く。<b>45秒</b>で多く潰した方の勝ち。<br>気づかれると逃げられます。</p>
 
       <div class="acts">
         <button class="primary" id="btn-online">だれかと対戦する</button>
         <button id="btn-local">ひとりで練習</button>
       </div>
-      <p class="note">体: <a href="https://github.com/NeLy-EPFL/flygym">flygym</a> NeuroMechFly ・ 脳: <a href="https://flywire.ai/">FlyWire</a> / <a href="https://github.com/philshiu/Drosophila_brain_model">Shiu et al.</a><br><a href="/">🪰 ハエたたき（1分）</a> ・ <a href="/game/">うんち陣取り</a> ・ <a href="/kansatsu/">蠅観察</a></p>
+      <select class="goto" id="goto" aria-label="ほかのページへ">
+        <option value="">ほかのページ…</option>
+        <option value="/">ハエたたき（1分）</option>
+        <option value="/game/">うんち陣取り</option>
+        <option value="/kansatsu/">蠅観察（脳を見る）</option>
+      </select>
+      <p class="note">体: <a href="https://github.com/NeLy-EPFL/flygym">flygym</a> NeuroMechFly ・ 脳: <a href="https://flywire.ai/">FlyWire</a> / <a href="https://github.com/philshiu/Drosophila_brain_model">Shiu et al.</a></p>
     </div>
 
     <div id="lobby-wait" hidden>
@@ -203,6 +209,9 @@ body.solo .p1 { display: none; }
   </div>
 </div>
 
-<script type="module" src="game.js?v=14"></script>
+<script type="module" src="game.js?v=16"></script>
+<script>
+document.getElementById('goto').addEventListener('change', (e) => { if (e.target.value) location.href = e.target.value; });
+</script>
 </body>
 </html>
