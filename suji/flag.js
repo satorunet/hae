@@ -15,6 +15,7 @@
 // The skeleton's frame is z-up (as in MuJoCo and flygym), so this scene is too.
 import * as THREE from '../test03/vendor/three.module.min.js';
 import { loadFlyData, FlyBody, CPG, LocoMap, LEGS } from '../test03/body3d.js?v=6';
+import { HeadJerk } from './headjerk.js?v=2';
 
 const V = '?v=6';
 const NMF = new URL('../test03/nmf/', import.meta.url).href;
@@ -50,21 +51,21 @@ export class FlagFly {
     this.actT = 0.8;
     this.w = { groom: 0, rub: 0 };
     this.prob = 0;
+    this.lick = 0;                 // 0..1: how hard the mouthparts are working the food
     this.groomPh = rnd(0, 6); this.groomSlow = rnd(0, 6); this.rubPh = rnd(0, 6);
     this.dL = 0; this.dR = 0; this.turn = 0;
     this.x = 0; this.y = 0; this.yaw = -0.5;
     this.head = 0;
-    this.puzzleT = 0;              // > 0 while it is puzzling over a wrong answer
-    this.puzzleFor = 0;
+    this.jerk = new HeadJerk();    // puzzling over a wrong answer
     this.look = new THREE.Vector3(0.35, 0, 0.8);
     this.camAng = this.yaw + CAM_OFF;   // the camera keeps to one side of the fly
   }
 
   /** True while an answer is still playing out, so the page can wait for it. */
-  isBusy() { return this.phase !== 'idle' || this.puzzleT > 0; }
+  isBusy() { return this.phase !== 'idle' || this.jerk.active; }
 
-  /** Told it was wrong: cock the head this way and that for a while, as if thinking. */
-  puzzle(seconds = 2.2) { this.puzzleT = this.puzzleFor = seconds; this.puzzleSide = Math.random() < 0.5 ? 1 : -1; }
+  /** Told it was wrong: two quick cocks of the head, one way then the other, as if thinking. */
+  puzzle() { this.jerk.start(2); }
 
   async load() {
     const [{ J, bin }, L] = await Promise.all([
@@ -296,6 +297,7 @@ export class FlagFly {
       : (this.act === 'feed' && !answering) ? clamp(0.4 + 0.6 * Math.sin(this.t * 7.5), 0.05, 1)
       : (!answering && Math.sin(this.t * 0.7) > 0.985 ? 0.3 : 0);
     this.prob = approach(this.prob, wantProb, dt, 0.07);
+    this.lick = approach(this.lick, feeding ? 1 : (this.act === 'feed' && !answering) ? 0.45 : 0, dt, 0.15);
     if (grooming) { this.groomPh += dt * TAU * 5.5; this.groomSlow += dt * TAU * 0.35; }
     if (rubbing) this.rubPh += dt * TAU * 6.5;
     this.head = approach(this.head, answering || this.act === 'walk' ? 0 : Math.sin(this.t * 0.55) * 0.35, dt, 0.35);
@@ -365,20 +367,23 @@ export class FlagFly {
 
     // ---------------------------------------------------------- head and mouthparts
     const jset = (n, v) => { const j = this.body.joints[n]; if (j) j.q = v; };
-    jset('c_head-c_rostrum-pitch', -1.25 * this.prob);
-    jset('c_rostrum-c_haustellum-pitch', -1.6 * this.prob);
+    // Feeding is not a still reach: the labellum at the tip pumps and dabs over
+    // the drop, the haustellum sweeps it side to side, the rostrum works in and
+    // out, and the antennae twitch.
+    const L = this.lick, t = this.t;
+    jset('c_head-c_rostrum-pitch', -1.25 * this.prob + L * (0.22 * Math.sin(t * 8.3) + 0.08 * Math.sin(t * 19)));
+    jset('c_head-c_rostrum-yaw', L * 0.14 * Math.sin(t * 3.1));
+    jset('c_rostrum-c_haustellum-pitch', -1.6 * this.prob + L * (0.42 * Math.sin(t * 15.5) + 0.12 * Math.sin(t * 4.2)));
+    jset('c_rostrum-c_haustellum-yaw', L * 0.38 * Math.sin(t * 5.3));
+    jset('c_rostrum-c_haustellum-roll', L * 0.3 * Math.sin(t * 7.1 + 1));
+    const tw = (ph) => Math.max(0, Math.sin(t * 2.7 + ph)) ** 6;        // occasional sharp flicks
+    jset('c_head-l_pedicel-pitch', L * (0.18 * Math.sin(t * 11) + 0.35 * tw(0)));
+    jset('c_head-r_pedicel-pitch', L * (0.18 * Math.sin(t * 11 + 2.1) + 0.35 * tw(1.9)));
+    jset('c_head-l_pedicel-yaw', L * 0.2 * Math.sin(t * 6.4));
+    jset('c_head-r_pedicel-yaw', -L * 0.2 * Math.sin(t * 6.4 + 0.8));
     jset('c_thorax-c_head-pitch', 0.18 * this.prob + (grooming ? 0.12 * Math.sin(this.groomPh * 0.5) : 0));
-    // puzzling: quick sideways tilts of the head (a jerky "hmm?"), fading in and out
-    let pr = 0, py = 0, pp = 0;
-    if (this.puzzleT > 0) {
-      this.puzzleT = Math.max(0, this.puzzleT - dt);
-      const u = 1 - this.puzzleT / this.puzzleFor;                // 0 -> 1 over the puzzle
-      const env = Math.min(1, u * 6, (1 - u) * 5);
-      const tick = Math.tanh(5 * Math.sin(u * this.puzzleFor * TAU * 0.9));   // snaps from side to side
-      pr = env * this.puzzleSide * 0.68 * tick;
-      py = env * this.puzzleSide * 0.3 * tick;
-      pp = env * (0.12 + 0.06 * Math.sin(u * this.puzzleFor * TAU * 2.2));
-    }
+    // puzzling: the head snaps from one diagonal tilt to another (see headjerk.js)
+    const [pr, py, pp] = this.jerk.step(dt);
     jset('c_thorax-c_head-yaw', this.head + py);
     jset('c_thorax-c_head-roll', pr);
     if (pp) { const j = this.body.joints['c_thorax-c_head-pitch']; if (j) j.q += pp; }
