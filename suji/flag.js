@@ -9,8 +9,9 @@
 // the flag riding where they meet.
 //
 // One answer runs as a little sequence: raise the flag, wave it, put it down,
-// and - if the answer was right - walk over to the drop of food that appears
-// and eat it.
+// and - if the answer was right - write the letter on the ground with a front
+// leg (in its real stroke order, from KanjiVG), show it off, then walk over to
+// the drop of food that appears and eat it.
 //
 // The skeleton's frame is z-up (as in MuJoCo and flygym), so this scene is too.
 import * as THREE from '../test03/vendor/three.module.min.js';
@@ -58,6 +59,8 @@ export class FlagFly {
     this.head = 0;
     this.jerk = new HeadJerk();    // puzzling over a wrong answer, or just weighing something up
     this.jerkBlocks = false;       // only the puzzling holds up the quiz
+    this.feedW = 0;                // 0..1, eased: how far into its eating posture
+    this.pen = null;               // the letter being written: { path, T, t }
     this.cockT = rnd(3, 8);        // next idle cock of the head
     this.look = new THREE.Vector3(0.35, 0, 0.8);
     this.camAng = this.yaw + CAM_OFF;   // the camera keeps to one side of the fly
@@ -76,10 +79,12 @@ export class FlagFly {
   }
 
   async load() {
-    const [{ J, bin }, L] = await Promise.all([
+    const [{ J, bin }, L, S] = await Promise.all([
       loadFlyData(NMF, V),
       fetch(NMF + 'locomotion.json' + V).then((r) => r.json()),
+      fetch(new URL('./strokes.json?v=1', import.meta.url)).then((r) => r.json()).catch(() => ({})),
     ]);
+    this.strokes = S;
     this.loco = new LocoMap(L);
 
     const r = this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true });
@@ -126,6 +131,8 @@ export class FlagFly {
     scene.add(this.flag.group);
     this.food = this.makeFood();
     scene.add(this.food.mesh);
+    this.ink = this.makeInk();
+    scene.add(this.ink.mesh);
 
     this.body.root.position.set(0, 0, this.z0);
     this.body.update();
@@ -208,7 +215,7 @@ export class FlagFly {
     this.hold = false;
     if (this.phase === 'toFood' || this.phase === 'feeding') return;
     if (this.phase === 'idle') {
-      if (correct) { this.dropFood(); this.setPhase('toFood'); this.setAct('stand', 6); }
+      if (correct) { this.setAct('stand', 6); this.afterRight(); }
       return;
     }
     this.reward = !!correct; this.want = 0; this.setPhase('lowering');
@@ -240,6 +247,86 @@ export class FlagFly {
     else if (r < 0.70) this.setAct('groom', rnd(1.6, 3.4));  // sweeping its head
     else if (r < 0.86) this.setAct('feed', rnd(1.6, 3.2));   // working its mouthparts
     else this.setAct('stand', rnd(0.8, 2.2));
+  }
+
+  // the trail the writing leg leaves: flat quads on the ground, one per step of the tip
+  makeInk() {
+    const MAX = 1500, pos = new Float32Array(MAX * 4 * 3), idx = [];
+    for (let i = 0; i < MAX; i++) { const o = 4 * i; idx.push(o, o + 1, o + 2, o + 2, o + 1, o + 3); }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
+    g.setIndex(idx);
+    g.setDrawRange(0, 0);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x9fdcff, transparent: true, opacity: 0.95,
+      depthWrite: false, side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(g, mat);
+    mesh.frustumCulled = false;
+    return { mesh, g, pos, n: 0, MAX, last: null, life: 0 };
+  }
+  inkClear() { this.ink.n = 0; this.ink.last = null; this.ink.g.setDrawRange(0, 0); }
+  inkAdd(x, y) {
+    const I = this.ink, W = 0.045, Z = 0.012;
+    if (!I.last) { I.last = [x, y]; return; }
+    const dx = x - I.last[0], dy = y - I.last[1], d = Math.hypot(dx, dy);
+    if (d < 0.015 || I.n >= I.MAX) return;
+    // a segment, overlapping the previous one a little so the line has no gaps
+    const nx = -dy / d * W, ny = dx / d * W, ex = dx / d * W * 0.7, ey = dy / d * W * 0.7;
+    const [ax, ay] = [I.last[0] - ex, I.last[1] - ey], [bx, by] = [x + ex, y + ey];
+    I.pos.set([ax + nx, ay + ny, Z, ax - nx, ay - ny, Z, bx + nx, by + ny, Z, bx - nx, by - ny, Z], 12 * I.n);
+    I.n++;
+    I.last = [x, y];
+    I.g.attributes.position.needsUpdate = true;
+    I.g.setDrawRange(0, 6 * I.n);
+  }
+
+  /**
+   * Plan the writing of `label` with the left front leg, in the thorax frame:
+   * the letter lies on the ground in front of the fly, turned so that it reads
+   * the right way up from where the camera is. Pen-up moves hop over the gaps.
+   */
+  planWriting(label) {
+    const strokes = this.strokes?.[label];
+    if (!strokes || !strokes.length) return null;
+    const rel = this.camAng - this.yaw;                    // camera direction, fly frame
+    const far = [-Math.cos(rel), -Math.sin(rel)];          // "up" on the page = away from the camera
+    const right = [far[1], -far[0]];
+    const C = [1.3, 0.5], S = 0.85, G = -this.z0 + 0.035, UP = 0.24;
+    const at = (u, v) => [C[0] + S * (u * right[0] - v * far[0]), C[1] + S * (u * right[1] - v * far[1])];
+    const pts = [];                                        // [x, y, z, penDown]
+    const home = this.downTip.lf;
+    pts.push([home[0], home[1], home[2], 0]);
+    for (const st of strokes) {
+      const p0 = at(st[0], st[1]);
+      pts.push([p0[0], p0[1], G + UP, 0], [p0[0], p0[1], G, 0]);
+      for (let i = 0; i < st.length; i += 2) { const p = at(st[i], st[i + 1]); pts.push([p[0], p[1], G, 1]); }
+      const pe = at(st[st.length - 2], st[st.length - 1]);
+      pts.push([pe[0], pe[1], G + UP, 0]);
+    }
+    pts.push([home[0], home[1], home[2] + 0.05, 0], [home[0], home[1], home[2], 0]);
+    // time along the path: slower while writing than while hopping
+    const T = [0];
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i], d = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+      T.push(T[i - 1] + d / (b[3] && a[3] ? 1.3 : 2.4) + (b[3] !== a[3] ? 0.04 : 0));
+    }
+    const c = at(0, 0), w = new THREE.Vector3(c[0], c[1], 0);
+    this.body.root.localToWorld(w);
+    return { pts, T, t: 0, centre: [w.x, w.y] };
+  }
+  penAt(P) {
+    const { pts, T } = P;
+    let i = 1;
+    while (i < T.length - 1 && T[i] < P.t) i++;
+    const a = pts[i - 1], b = pts[i], u = clamp((P.t - T[i - 1]) / Math.max(1e-6, T[i] - T[i - 1]), 0, 1);
+    return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u];
+  }
+  // after the flag comes down on a right answer: write it if we can, then eat
+  afterRight() {
+    const P = this.planWriting(this.digit);
+    if (P) {
+      this.pen = P; this.inkClear(); this.ink.life = 1; this.ink.mesh.material.opacity = 0.95;
+      this.setPhase('writing'); this.setAct('stand', 20);
+    } else { this.dropFood(); this.setPhase('toFood'); }
   }
 
   dropFood() {
@@ -276,10 +363,23 @@ export class FlagFly {
     if (this.phase === 'waving' && !this.hold && this.phaseT > WAVE_FOR) { this.want = 0; this.setPhase('lowering'); }
     if (this.phase === 'lowering' && this.lift < 0.005) {
       this.flag.group.visible = false;
-      if (this.reward) { this.dropFood(); this.setPhase('toFood'); } else this.setPhase('idle');
+      if (this.reward) this.afterRight(); else this.setPhase('idle');
     }
     const k = ease(this.lift);
     const holding = this.lift > 0.002;
+
+    // writing the letter, then a moment to show it, then the food
+    if (this.phase === 'writing') {
+      this.pen.t += dt;
+      if (this.pen.t >= this.pen.T[this.pen.T.length - 1]) { this.setPhase('showing'); this.cock(0.5); }
+    }
+    if (this.phase === 'showing' && this.phaseT > 1.3) { this.dropFood(); this.setPhase('toFood'); }
+    if (this.ink.n && this.phase !== 'writing' && this.phase !== 'showing') {
+      // the letter stays while the fly goes to eat, then fades
+      this.ink.life = Math.max(0, this.ink.life - dt / (this.phase === 'idle' ? 1.2 : 6));
+      this.ink.mesh.material.opacity = 0.95 * Math.min(1, this.ink.life * 2.5);
+      if (this.ink.life <= 0) this.inkClear();
+    }
 
     // walking to the food, then eating it
     let steer = null;
@@ -299,7 +399,8 @@ export class FlagFly {
     }
 
     // ---------------------------------------------------------- idle behaviour
-    const answering = holding || this.phase === 'toFood' || feeding;
+    const writing = this.phase === 'writing' || this.phase === 'showing';
+    const answering = holding || this.phase === 'toFood' || feeding || writing;
     this.actT -= dt;
     if (!answering && this.actT <= 0) this.chooseAct();
 
@@ -376,6 +477,11 @@ export class FlagFly {
         ];
         this.body.setLeg(leg, this.body.ik(leg, tgt, this.body.getLeg(leg), this.neutral[i], 5, 0.02));
       }
+      if (leg === 'lf' && this.phase === 'writing') {   // the pen
+        const tgt = this.penAt(this.pen);
+        this.penIk = this.body.ik(leg, tgt, this.penIk || this.body.getLeg(leg), this.neutral[i], 6, 0.015);
+        this.body.setLeg(leg, this.penIk);
+      } else if (leg === 'lf') this.penIk = null;
       if (front) {
         const tip = this.body.legTip(leg);
         for (let j = 0; j < 3; j++) mid[j] += tip[j] / 2;
@@ -426,7 +532,8 @@ export class FlagFly {
     jset('c_head-r_pedicel-pitch', L * (0.18 * Math.sin(t * 11 + 2.1) + 0.35 * tw(1.9)));
     jset('c_head-l_pedicel-yaw', L * 0.2 * Math.sin(t * 6.4));
     jset('c_head-r_pedicel-yaw', -L * 0.2 * Math.sin(t * 6.4 + 0.8));
-    jset('c_thorax-c_head-pitch', 0.18 * this.prob + (grooming ? 0.12 * Math.sin(this.groomPh * 0.5) : 0));
+    jset('c_thorax-c_head-pitch', 0.18 * this.prob + this.feedW * 0.07 * Math.sin(t * 9)
+      + (grooming ? 0.12 * Math.sin(this.groomPh * 0.5) : 0));
     // puzzling: the head snaps from one diagonal tilt to another (see headjerk.js)
     // ...and, now and then, a small one of its own accord while it stands about
     this.cockT -= dt;
@@ -444,15 +551,25 @@ export class FlagFly {
     this.wob = this.phase === 'waving'
       ? Math.sin(this.t * (2.4 + 5 * this.sure)) * (0.05 + 0.2 * (1 - this.sure))
       : 0;
-    // it dips its head to the food while eating
-    const dip = feeding ? 0.2 * this.prob : 0;
+    // it leans in to eat - a steady posture, eased in and out; the rhythm of
+    // eating is in the head and mouthparts only, so the body and abdomen stay put
+    this.feedW = approach(this.feedW, feeding ? 1 : 0, dt, 0.3);
+    const dip = 0.16 * this.feedW;
     const q = this._q ??= new THREE.Quaternion(), q2 = this._q2 ??= new THREE.Quaternion();
     q.setFromAxisAngle(AZ, this.yaw);
     q2.setFromAxisAngle(AY, -0.30 * k - 0.06 * W.groom + dip);
     this.body.root.quaternion.copy(q).multiply(q2);
     this.body.root.position.set(this.x, this.y,
-      this.z0 + breathe + 0.45 * k - 0.06 * W.groom - 0.05 * (feeding ? this.prob : 0));
+      this.z0 + breathe * (1 - this.feedW) + 0.45 * k - 0.06 * W.groom - 0.05 * this.feedW);
     this.body.update();
+
+    // the ink comes off the real tip of the leg, whenever it touches the ground
+    if (this.phase === 'writing') {
+      const tip = this.body.legTip('lf'), w = this._w ??= new THREE.Vector3();
+      w.set(tip[0], tip[1], tip[2]);
+      this.body.root.localToWorld(w);
+      if (w.z < 0.12) this.inkAdd(w.x, w.y); else this.ink.last = null;
+    }
 
     // ---------------------------------------------------------- the flag
     if (this.flag.group.visible) {
@@ -473,16 +590,20 @@ export class FlagFly {
 
     // ---------------------------------------------------------- camera
     // it frames the fly, and widens to take in the food while that is on screen
-    const tx = this.food.mesh.visible ? (this.x + this.food.x) / 2 : this.x;
-    const ty = this.food.mesh.visible ? (this.y + this.food.y) / 2 : this.y;
+    let tx = this.food.mesh.visible ? (this.x + this.food.x) / 2 : this.x;
+    let ty = this.food.mesh.visible ? (this.y + this.food.y) / 2 : this.y;
+    if (writing && this.pen) { tx = (this.x + this.pen.centre[0]) / 2; ty = (this.y + this.pen.centre[1]) / 2; }
     const wide = this.food.mesh.visible ? 1.1 : 0;
     this.look.x += (tx * 0.85 - this.look.x) * Math.min(1, dt * 2.2);
     this.look.y += (ty * 0.85 - this.look.y) * Math.min(1, dt * 2.2);
-    this.look.z += (0.8 + 1.7 * k - this.look.z) * Math.min(1, dt * 3);
+    // while it writes and shows the letter, the camera climbs to look down on the page
+    this.writeW = approach(this.writeW || 0, writing || (this.ink.n && this.phase === 'toFood') ? 1 : 0, dt, 0.6);
+    const vw = this.writeW;
+    this.look.z += (0.8 + 1.7 * k - 0.6 * vw - this.look.z) * Math.min(1, dt * 3);
     this.camAng += wrap(this.yaw + CAM_OFF - this.camAng) * Math.min(1, dt * 1.4);
-    const r = 5.8 + 1.2 * k + wide;
+    const r = 5.8 + 1.2 * k + wide - 2.0 * vw;
     this.camera.position.set(this.look.x + Math.cos(this.camAng) * r,
-      this.look.y + Math.sin(this.camAng) * r, 1.5 + 1.3 * k);
+      this.look.y + Math.sin(this.camAng) * r, 1.5 + 1.3 * k + 3.4 * vw);
     this.camera.lookAt(this.look);
     // the key light rides with the camera, so the fly is never left backlit
     this.sun.position.set(this.look.x + Math.cos(this.camAng + 0.8) * 9,

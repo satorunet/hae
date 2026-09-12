@@ -1,0 +1,5 @@
+strokes.json: stroke paths for 1-9 and the 46 hiragana, sampled to point lists
+and centred on a unit box, derived from KanjiVG (http://kanjivg.tagaini.net),
+Copyright (C) 2009-2011 Ulrich Apel, licensed under the Creative Commons
+Attribution-Share Alike 3.0 licence. This derived file is distributed under
+the same licence.
