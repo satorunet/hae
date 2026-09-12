@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>うんち陣取り — 蠅あつめ対戦</title>
+<meta name="description" content="同じ画面で2人対戦。うんちを置いて、より多くの蠅を集めた方が勝ち。蠅は本物のショウジョウバエの体（NeuroMechFly）で動きます。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A6%9F%3C/text%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="hae.satoru.net">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:url" content="https://hae.satoru.net/game/">
+<meta property="og:title" content="うんち陣取り — 蠅あつめ対戦">
+<meta property="og:description" content="同じ画面で2人対戦。うんちを置いて、より多くの蠅を集めた方が勝ち。">
+<meta property="og:image" content="https://hae.satoru.net/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="うんち陣取り — 蠅あつめ対戦">
+<meta name="twitter:description" content="同じ画面で2人対戦。うんちを置いて、より多くの蠅を集めた方が勝ち。">
+<meta name="twitter:image" content="https://hae.satoru.net/og.jpg">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781; --ring: rgba(11,11,11,0.10);
+  --btn: #f0efec; --accent: #2a78d6; --stage: #cfd3cf; --card: #fff;
+  --red: #e04b3c; --blue: #2f74d0;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) { color-scheme: dark; --page: #0d0d0d; --ink: #fff; --ink-2: #c3c2b7; --ring: rgba(255,255,255,0.10); --btn: #262624; --accent: #3987e5; --stage: #1d2126; --card: #1a1a19; }
+}
+* { box-sizing: border-box; }
+html { touch-action: manipulation; }
+body { margin: 0; background: var(--page); color: var(--ink); padding-inline: 12px;
+  font: 14px/1.6 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding-block: 10px 28px; }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+h1 { font-size: 1.05rem; margin: 0; }
+h1 a { color: inherit; text-decoration: none; }
+select { font: inherit; font-size: 16px; color: var(--ink); background: var(--btn); border: 1px solid var(--ring); border-radius: 8px; padding: 3px 8px; }
+button { font: inherit; color: var(--ink); background: var(--btn); border: 1px solid var(--ring); border-radius: 8px; padding: 6px 14px; cursor: pointer; }
+/* score bar */
+.bar { display: grid; grid-template-columns: 1fr minmax(0, 1.5fr) 1fr; gap: 8px; align-items: stretch; margin-bottom: 8px; }
+.p { background: var(--card); border: 2px solid var(--ring); border-radius: 10px; padding: 5px 10px; display: flex; align-items: baseline; gap: 8px; }
+.p.p1 { justify-content: flex-end; }
+.p .nm { font-weight: 700; }
+.p .sc { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.p .ct { font-size: 0.78rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.p0 { border-color: var(--red); } .p0 .nm, .p0 .sc { color: var(--red); }
+.p1 { border-color: var(--blue); } .p1 .nm, .p1 .sc { color: var(--blue); }
+.p.active { box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 25%, transparent); }
+.mid { display: flex; align-items: center; justify-content: center; text-align: center; font-size: 0.86rem; color: var(--ink-2); }
+/* stage */
+.stage { position: relative; border-radius: 12px; overflow: hidden; background: var(--stage); height: min(72vh, 720px); min-height: 340px; touch-action: none; }
+#view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+.load { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #333; font-size: 0.9rem; }
+.msg { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); background: rgba(11,11,11,0.75); color: #fff; font-size: 0.84rem;
+  padding: 5px 14px; border-radius: 14px; pointer-events: none; opacity: 0; transition: opacity 0.25s; }
+.msg.show { opacity: 1; }
+.result { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(10,10,10,0.55); }
+.result[hidden] { display: none; }
+.result .box { background: var(--card); border-radius: 14px; padding: 20px 26px; text-align: center; box-shadow: 0 8px 30px rgba(0,0,0,0.4); }
+#r-title { font-size: 1.5rem; font-weight: 700; }
+#r-score { font-size: 1.1rem; margin: 8px 0 14px; font-variant-numeric: tabular-nums; }
+#r-score .vs { color: var(--muted); }
+/* the notice */
+.warn { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(10,10,10,0.88); }
+.warn-box { background: #1b1b1a; color: #f4f4f2; border-radius: 14px; padding: 22px 22px 18px; max-width: 380px; width: 100%; text-align: left; box-shadow: 0 8px 30px rgba(0,0,0,0.5); }
+.warn-t { font-size: 1.3rem; font-weight: 700; color: #ffcf5a; }
+.warn-box p { font-size: 0.9rem; line-height: 1.7; color: #d8d8d4; margin: 12px 0 0; }
+.warn-box ol { font-size: 0.9rem; line-height: 1.7; color: #d8d8d4; margin: 10px 0 0; padding-left: 1.3em; }
+.warn-box .ok { margin-top: 18px; text-align: right; }
+.warn-box button { font-size: 1rem; padding: 9px 44px; background: #ffcf5a; color: #1b1b1a; border: 0; font-weight: 700; border-radius: 10px; }
+.note { color: var(--muted); font-size: 0.72rem; margin: 8px 0 0; }
+.note a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="warn" id="warn" role="dialog" aria-modal="true" aria-labelledby="warn-t">
+  <div class="warn-box">
+    <div class="warn-t" id="warn-t">⚠️ 閲覧注意</div>
+    <p>このサイトは蠅の脳の分析・研究を目的としたサイトです。うんちと、それに群がる蠅（ハエ）が大きく映ります。音が出ます。</p>
+    <p><b>うんち陣取り</b>（同じ画面で2人対戦）</p>
+    <ol>
+      <li>赤 → 青の順に、地面をタップしてうんちを置く（1人3個）</li>
+      <li>自分のうんちに集まっている蠅の数が、毎秒スコアになる</li>
+      <li>置き終わったら40秒。合計スコアが多い方の勝ち</li>
+    </ol>
+    <p>指でなぞると手で蠅を追い払えます（相手の邪魔もできます）。</p>
+    <div class="ok"><button id="warn-ok">OK</button></div>
+  </div>
+</div>
+<main>
+  <div class="top">
+    <h1>うんち陣取り <span style="color:var(--muted);font-weight:500;font-size:0.82rem">— 蠅あつめ対戦</span></h1>
+    <label title="蠅の数">
+      <select id="n-flies" aria-label="蠅の数">
+        <option value="10">🦟 10</option><option value="20">🦟 20</option>
+        <option value="30" selected>🦟 30</option><option value="50">🦟 50</option>
+      </select></label>
+  </div>
+  <div class="bar">
+    <div class="p p0" id="p0"><span class="nm">赤</span><span class="sc" id="s0">0</span><span class="ct">いま <span id="c0">0</span> 匹</span></div>
+    <div class="mid" id="turn"></div>
+    <div class="p p1" id="p1"><span class="ct">いま <span id="c1">0</span> 匹</span><span class="sc" id="s1">0</span><span class="nm">青</span></div>
+  </div>
+  <div class="stage" id="stage">
+    <canvas id="view" aria-label="うんちに群がる蠅のフィールド"></canvas>
+    <div class="load" id="load">蠅を読み込んでいます…</div>
+    <div class="msg" id="msg"></div>
+    <div class="result" id="result" hidden>
+      <div class="box">
+        <div id="r-title"></div>
+        <div id="r-score"></div>
+        <button id="again">もう一度</button>
+      </div>
+    </div>
+  </div>
+  <p class="note">体: <a href="https://github.com/NeLy-EPFL/flygym">flygym</a> NeuroMechFly ・ 脳: <a href="https://flywire.ai/">FlyWire</a> / <a href="https://github.com/philshiu/Drosophila_brain_model">Shiu et al.</a> ・ <a href="/">本編（1匹の脳を見る）</a></p>
+</main>
+<script type="module" src="game.js?v=7"></script>
+</body>
+</html>
