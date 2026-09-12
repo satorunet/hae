@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ハエの脳シミュレーター test02</title>
+<meta name="description" content="FlyWire コネクトーム 13.9万ニューロンの脳（WebAssembly）がハエの体を動かすシミュレーター">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10);
+  --c-central: #2a78d6; --c-output: #eb6834; --c-input: #1baf7a;
+  --floor: #f3f0e8; --floor-grid: #e7e2d6; --warn-bg: #fff3e0; --warn-ink: #8a4a00;
+  --btn: #f0efec; --btn-on: #0b0b0b; --btn-on-ink: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --grid: #2c2c2a; --axis: #383835;
+    --ring: rgba(255,255,255,0.10); --c-central: #3987e5; --c-output: #d95926; --c-input: #199e70;
+    --floor: #1e1e1c; --floor-grid: #282826; --warn-bg: #3a2608; --warn-ink: #ffcf8a;
+    --btn: #262624; --btn-on: #ffffff; --btn-on-ink: #0b0b0b;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --grid: #2c2c2a; --axis: #383835;
+  --ring: rgba(255,255,255,0.10); --c-central: #3987e5; --c-output: #d95926; --c-input: #199e70;
+  --floor: #1e1e1c; --floor-grid: #282826; --warn-bg: #3a2608; --warn-ink: #ffcf8a;
+  --btn: #262624; --btn-on: #ffffff; --btn-on-ink: #0b0b0b;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); padding-inline: 16px;
+  font: 14px/1.6 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif; }
+main { max-width: 1280px; margin: 0 auto; padding-block: 20px 60px; }
+h1 { font-size: 1.45rem; margin: 0; line-height: 1.3; }
+h2 { font-size: 0.95rem; margin: 0 0 8px; }
+h3 { font-size: 1.05rem; margin: 36px 0 8px; }
+a { color: var(--c-central); }
+.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px 20px; margin-bottom: 12px; }
+.sub { color: var(--ink-2); font-size: 0.88rem; margin: 4px 0 0; max-width: 60em; }
+.controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+button, select { font: inherit; font-size: 0.86rem; color: var(--ink); background: var(--btn); border: 1px solid var(--ring);
+  border-radius: 8px; padding: 5px 10px; cursor: pointer; }
+button:hover { border-color: var(--axis); }
+button.on { background: var(--btn-on); color: var(--btn-on-ink); border-color: var(--btn-on); }
+button:disabled { opacity: 0.45; cursor: default; }
+.layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr); gap: 12px; align-items: start; }
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 12px 14px; }
+.stack { display: grid; gap: 12px; }
+.tools { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.tools button { padding: 4px 9px; }
+#arena { width: 100%; display: block; border-radius: 8px; touch-action: none; cursor: crosshair; }
+.hint { color: var(--muted); font-size: 0.8rem; margin: 6px 0 0; min-height: 1.3em; }
+.status { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--ink-2); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.status b { color: var(--ink); font-weight: 600; }
+.badge { display: flex; align-items: center; gap: 12px; }
+.badge .em { font-size: 2rem; line-height: 1; }
+.badge .t { font-size: 1.25rem; font-weight: 650; }
+.badge .why { color: var(--ink-2); font-size: 0.8rem; }
+.rows { display: grid; gap: 3px; }
+.row { display: grid; grid-template-columns: 8.6em 1fr 3.6em; gap: 8px; align-items: center; font-size: 0.8rem; }
+.row .nm { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .val { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
+.bar { height: 8px; background: var(--grid); border-radius: 4px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; border-radius: 4px; background: var(--c-central); transition: width 0.12s linear; }
+.bar.in i { background: var(--c-input); }
+.bar.hot i { background: var(--c-output); }
+.sec { color: var(--muted); font-size: 0.72rem; margin: 8px 0 2px; letter-spacing: 0.04em; }
+#brainmap { width: 100%; display: block; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.76rem; color: var(--ink-2); margin-top: 6px; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+#spark { width: 100%; height: 70px; display: block; }
+.warn { display: none; background: var(--warn-bg); color: var(--warn-ink); border-radius: 8px; padding: 8px 10px; font-size: 0.84rem; margin-top: 8px; }
+.warn.show { display: block; }
+#log { font-size: 0.8rem; color: var(--ink-2); max-height: 170px; overflow-y: auto; font-variant-numeric: tabular-nums; }
+#log div { padding: 2px 0; border-bottom: 1px solid var(--grid); }
+#log b { color: var(--ink); font-weight: 600; }
+.loading { position: relative; }
+.overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--surface) 88%, transparent); border-radius: 8px; gap: 8px; text-align: center; padding: 16px; }
+.overlay .pbar { width: min(320px, 80%); height: 6px; background: var(--grid); border-radius: 3px; overflow: hidden; }
+.overlay .pbar i { display: block; height: 100%; width: 0; background: var(--c-central); }
+.overlay[hidden] { display: none; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 760px) { .cols { grid-template-columns: 1fr; } }
+.prose p, .prose li { max-width: 48em; color: var(--ink-2); font-size: 0.9rem; }
+.prose b { color: var(--ink); }
+.prose ul { padding-left: 1.2em; }
+code { background: var(--btn); border-radius: 4px; padding: 1px 5px; font-size: 0.86em; }
+label.chk { font-size: 0.8rem; color: var(--ink-2); display: inline-flex; gap: 5px; align-items: center; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div>
+      <h1>ハエの脳シミュレーター <span style="color:var(--muted);font-weight:500">test02</span></h1>
+      <p class="sub">本物のショウジョウバエの脳の配線図（FlyWire、13.9万ニューロン・1,509万結合）を
+        ブラウザ内の WebAssembly で動かし、その出力でハエの体を動かします。餌やほこりを置いたり、影を落としたりしてみてください。 <a href="../test03/">→ 3D版（flygym の体・飛行つき）test03</a></p>
+    </div>
+    <div class="controls">
+      <button id="btn-play" disabled>⏸ 一時停止</button>
+      <button id="btn-reset" disabled>脳をリセット</button>
+      <select id="speed" aria-label="速度"><option value="0.25">×0.25</option><option value="0.5">×0.5</option><option value="1" selected>×1（実時間）</option><option value="2">×2</option></select>
+      <select id="scenario" aria-label="シナリオ">
+        <option value="free">シナリオ: 自由に</option>
+        <option value="feed" selected>砂糖を食べる</option>
+        <option value="bitter">苦味を混ぜる</option>
+        <option value="dust">ほこりと身づくろい</option>
+        <option value="predator">天敵の影</option>
+        <option value="all">全部入り</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="stack">
+      <div class="card">
+        <div class="tools" id="tools">
+          <button data-tool="sugar" class="on">🍬 砂糖</button>
+          <button data-tool="bitter">🟤 苦味</button>
+          <button data-tool="mix">🍯 砂糖＋苦味</button>
+          <button data-tool="water">💧 水</button>
+          <button data-tool="dust">🌫 ほこり</button>
+          <button data-tool="shadow">🦅 影を落とす</button>
+          <button data-tool="touch">👆 頭に触れる</button>
+          <button data-tool="move">✋ ハエを移動</button>
+          <button data-tool="erase">🧽 消す</button>
+        </div>
+        <div class="loading">
+          <canvas id="arena" aria-label="アリーナ"></canvas>
+          <div class="overlay" id="overlay">
+            <div id="load-msg">脳の配線（約30MB）を読み込んでいます…</div>
+            <div class="pbar"><i id="load-bar"></i></div>
+            <div style="color:var(--muted);font-size:0.78rem">初回のみ。WebAssembly で 138,639 個のニューロンを組み立てます</div>
+          </div>
+        </div>
+        <p class="hint" id="hint"></p>
+        <div class="status" id="status"></div>
+        <div class="warn" id="warn"></div>
+      </div>
+
+      <div class="card">
+        <h2>全脳の発火（スパイク/秒）</h2>
+        <canvas id="spark" aria-label="全脳の発火率の推移"></canvas>
+        <div class="legend"><span><i style="background:var(--c-central)"></i>全ニューロンの合計スパイク数（直近10秒）</span><span style="color:var(--muted)">点線 = 暴走の目安（15万/秒）</span></div>
+      </div>
+
+      <div class="card">
+        <h2>できごと</h2>
+        <div id="log"></div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="card">
+        <div class="badge"><div class="em" id="beh-em">🪰</div><div><div class="t" id="beh-t">準備中</div><div class="why" id="beh-why"></div></div></div>
+      </div>
+      <div class="card">
+        <h2>入力 — 感覚ニューロンへの刺激</h2>
+        <div class="rows" id="in-rows"></div>
+      </div>
+      <div class="card">
+        <h2>出力 — 脳から体への信号（発火率 Hz）</h2>
+        <div class="rows" id="out-rows"></div>
+      </div>
+      <div class="card">
+        <h2>脳の中（いま発火したニューロン）</h2>
+        <canvas id="brainmap" aria-label="発火したニューロンの位置"></canvas>
+        <div class="legend"><span><i style="background:var(--c-input)"></i>感覚（入力）</span><span><i style="background:var(--c-central)"></i>中間</span><span><i style="background:var(--c-output)"></i>下行性・運動（出力）</span><span style="color:var(--muted)">背面から見た図</span></div>
+        <div style="margin-top:8px"><button id="btn-smell" disabled>🧪 実験: 匂いを嗅がせる</button>
+          <label class="chk"><input type="checkbox" id="auto-reset" checked>暴走したら自動リセット</label></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="prose">
+    <h3>このシミュレーターの中身 — 何が本物で、何が手作りか</h3>
+    <div class="cols">
+      <div class="card">
+        <h2>本物（配線データとモデルそのまま）</h2>
+        <ul>
+          <li><b>脳</b>: FlyWire v783 の 138,639 ニューロン・15,091,983 結合。Shiu et al. (2024, <i>Nature</i>) の LIF モデルを <a href="../flybrain/">flybrain.js</a>（WebAssembly）で動かしています。元の Brian2 実装とスパイク1本単位で一致することを確認済み。</li>
+          <li><b>どこに入力するか</b>: 甘味・苦味・水の味覚ニューロン（論文のリスト）、頭の毛と触角の機械感覚ニューロン、迫る影に反応する視覚ニューロン LC4 / LPLC2。FlyWire の細胞タイプ注釈で選んでいます。</li>
+          <li><b>出力の値</b>: MN9（口吻の運動ニューロン）、ジャイアントファイバー DNp01 などの発火率は、すべてこの脳が計算した結果です。</li>
+          <li><b>見つかったこと</b>: 苦味を混ぜると MN9 が止まる。ほこりが付いていると砂糖があっても MN9 が止まる（身づくろいが摂食に勝つ）。どちらも手で決めたルールではなく、配線から出てきます。</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>手作り（このページで決めたこと）</h2>
+        <ul>
+          <li><b>体</b>: 脳のデータには胴体の神経（VNC）や筋肉が含まれていません。歩き方・ジャンプ・描画はこのページの簡易モデルです。</li>
+          <li><b>歩くこと自体</b>: このモデルの脳は刺激がないと静かなので、ハエは既定でうろうろ歩きます（脳の指令ではありません）。脳が決めるのは「止まって食べる」「止まって身づくろい」「飛んで逃げる」と、その強さ・向きです。</li>
+          <li><b>出力→行動の対応と閾値</b>: MN9 &gt; 15 Hz で摂食（8 Hz を下回るまで続ける）、DNg84・DNg35 &gt; 40 Hz で身づくろい（22 Hz を下回るまで）、DNp01 が1回でも発火したら離陸。刺激の強さ（Hz）も手で決めています。</li>
+          <li><b>嗅覚は使えません</b>: 匂い（ORN）や温度の感覚ニューロンを入れると、弱い刺激でも脳全体が自己持続的な暴走状態になります（Brian2 でも同じ）。🧪ボタンで確かめられます。</li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin-top:14px">参考にした先行例: <a href="https://github.com/snedea/flybrain">snedea/flybrain</a>（ブラウザで FlyWire を動かすアリーナ）、Eon Systems の身体付きハエ（脳＋NeuroMechFly）、<a href="https://github.com/NeLy-EPFL/flygym">NeuroMechFly</a>。
+      データ: FlyWire Consortium / Schlegel et al. 2024（CC-BY 4.0）。モデル: <a href="https://github.com/philshiu/Drosophila_brain_model">philshiu/Drosophila_brain_model</a>（MIT）。</p>
+  </div>
+</main>
+
+<script>
+(() => {
+'use strict';
+const $ = (id) => document.getElementById(id);
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const TICK = 20;                         // ms of brain time per exchange with the worker
+const AW = 100, AH = 64;                 // arena, mm
+const FLY_DRAW = 2.3;                    // the fly is drawn larger than life
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+
+// ------------------------------------------------------------------ labels
+const IN_ROWS = [
+  ['sugar', '甘味 GRN'], ['bitter', '苦味 GRN'], ['water', '水 GRN'],
+  ['headL', '頭の毛・触角 左'], ['headR', '頭の毛・触角 右'],
+  ['loomL', 'LC4/LPLC2 左'], ['loomR', 'LC4/LPLC2 右'], ['smell', '匂い ORN（実験）'],
+];
+const OUT_ROWS = [
+  ['__sec', '摂食'], ['MN9', 'MN9 口吻伸展'], ['PROB', 'CB0700 口吻'],
+  ['__sec', '身づくろい'], ['groomL', 'DNg84+35 左'], ['groomR', 'DNg84+35 右'], ['aDN', 'aDN1/aDN2 触角'],
+  ['__sec', '逃避'], ['GFL', 'DNp01 GF 左'], ['GFR', 'DNp01 GF 右'], ['escL', 'DNp04/02 左'], ['escR', 'DNp04/02 右'],
+  ['__sec', '歩行（参考）'], ['DNa02L', 'DNa02 左'], ['DNa02R', 'DNa02 右'], ['MDN', 'MDN 後退'], ['DNp09', 'DNp09 前進'],
+];
+function buildRows(el, rows, cls, max) {
+  const refs = {};
+  el.innerHTML = '';
+  for (const [k, label] of rows) {
+    if (k === '__sec') { const d = document.createElement('div'); d.className = 'sec'; d.textContent = label; el.appendChild(d); continue; }
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `<span class="nm" title="${label}">${label}</span><span class="bar ${cls}"><i></i></span><span class="val">0</span>`;
+    el.appendChild(row);
+    refs[k] = { bar: row.querySelector('i'), val: row.querySelector('.val'), wrap: row.querySelector('.bar'), max };
+  }
+  return refs;
+}
+const inRefs = buildRows($('in-rows'), IN_ROWS, 'in', 150);
+const outRefs = buildRows($('out-rows'), OUT_ROWS, '', 200);
+function setRow(ref, v, hotAt) {
+  if (!ref) return;
+  ref.bar.style.width = clamp(v / ref.max * 100, 0, 100) + '%';
+  ref.val.textContent = v >= 10 ? Math.round(v) : v.toFixed(v > 0 ? 1 : 0);
+  if (hotAt !== undefined) ref.wrap.classList.toggle('hot', v >= hotAt);
+}
+
+// ------------------------------------------------------------------ world
+const world = {
+  t: 0,
+  fly: { x: 50, y: 40, th: -Math.PI / 2, v: 0, om: 0, gait: 0, state: 'walk', stateT: 0,
+         prob: 0, groomPh: 0, alt: 0, fvx: 0, fvy: 0, dustL: 0, dustR: 0, touchL: 0, touchR: 0 },
+  patches: [], dusts: [], shadows: [], trail: [],
+  smell: false,
+};
+const drive = { MN9: 0, PROB: 0, groomL: 0, groomR: 0, aDN: 0, GFL: 0, GFR: 0, escL: 0, escR: 0, DNa02L: 0, DNa02R: 0, MDN: 0, DNp09: 0 };
+let lastOut = { ...drive };
+let inputs = {};
+
+function addPatch(type, x, y, r = 3.2) { world.patches.push({ type, x, y, r, amount: 1 }); }
+function addDust(x, y, r = 7) {
+  const pts = Array.from({ length: 70 }, () => { const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * r; return [Math.cos(a) * d, Math.sin(a) * d, 0.3 + Math.random() * 0.7]; });
+  world.dusts.push({ x, y, r, pts });
+}
+function launchShadow(x, y) {
+  const f = world.fly, dx = f.x - x, dy = f.y - y, d = Math.hypot(dx, dy) || 1;
+  world.shadows.push({ x, y, vx: dx / d * 55, vy: dy / d * 55, R: 6, life: 0, prevA: null });
+  log(`🦅 影が近づいてくる`);
+}
+
+function scenario(name) {
+  world.patches = []; world.dusts = []; world.shadows = []; world.trail = [];
+  const f = world.fly;
+  Object.assign(f, { x: 50, y: 44, th: -Math.PI / 2, state: 'walk', stateT: 0, prob: 0, alt: 0, dustL: 0, dustR: 0, touchL: 0, touchR: 0 });
+  predatorTimer = 0; predatorOn = false;
+  if (name === 'feed' || name === 'all') { addPatch('sugar', 50, 30); addPatch('sugar', 22, 18); addPatch('sugar', 78, 50); addPatch('sugar', 80, 16); }
+  if (name === 'bitter' || name === 'all') { addPatch('mix', 50, 30); addPatch('bitter', 28, 46); addPatch('sugar', 74, 22); if (name === 'bitter') addPatch('mix', 24, 16); }
+  if (name === 'dust' || name === 'all') { addDust(50, 30, 8); addDust(24, 40, 7); if (name === 'dust') addDust(76, 22, 7); }
+  if (name === 'predator' || name === 'all') predatorOn = true;
+  if (name === 'all') { world.patches = world.patches.filter((p, i, a) => a.findIndex((q) => Math.hypot(q.x - p.x, q.y - p.y) < 4) === i); }
+  hint(name);
+}
+let predatorTimer = 0, predatorOn = false;
+
+// ------------------------------------------------------------------ senses
+function sense() {
+  const f = world.fly, inp = { sugar: 0, bitter: 0, water: 0, headL: 0, headR: 0, loomL: 0, loomR: 0, smell: world.smell ? 20 : 0 };
+  const hx = f.x + Math.cos(f.th) * 1.3, hy = f.y + Math.sin(f.th) * 1.3;     // head (mouthparts)
+  f.onPatch = null;
+  if (f.state !== 'flight') {
+    for (const p of world.patches) {
+      if (p.amount <= 0.01 || Math.hypot(hx - p.x, hy - p.y) > p.r) continue;
+      f.onPatch = p;
+      const c = Math.min(1, p.amount * 3);
+      if (p.type === 'sugar') inp.sugar = 150 * c;
+      if (p.type === 'water') inp.water = 150 * c;
+      if (p.type === 'bitter') inp.bitter = 150 * c;
+      if (p.type === 'mix') { inp.sugar = 150 * c; inp.bitter = 150 * c; }
+    }
+  }
+  inp.headL = clamp(55 * f.dustL + (f.touchL > 0 ? 120 : 0), 0, 150);
+  inp.headR = clamp(55 * f.dustR + (f.touchR > 0 ? 120 : 0), 0, 150);
+  for (const s of world.shadows) {
+    const dx = s.x - f.x, dy = s.y - f.y, d = Math.max(0.5, Math.hypot(dx, dy));
+    const a = 2 * Math.atan(s.R / d);
+    const da = s.prevA === null ? 0 : (a - s.prevA) / (TICK / 1000);
+    s.prevA = a;
+    const hz = clamp(da * 70, 0, 120);
+    const bearing = wrap(Math.atan2(dy, dx) - f.th);
+    if (Math.abs(bearing) < 0.35) { inp.loomL += hz * 0.8; inp.loomR += hz * 0.8; }
+    else if (bearing < 0) inp.loomL += hz; else inp.loomR += hz;
+  }
+  inp.loomL = clamp(inp.loomL, 0, 120); inp.loomR = clamp(inp.loomR, 0, 120);
+  return inp;
+}
+
+// ------------------------------------------------------------------ body
+const ema = (a, b, k) => a + (b - a) * k;
+function bodyStep(out, dt) {
+  const f = world.fly;
+  for (const k in drive) drive[k] = ema(drive[k], out[k] || 0, k.startsWith('GF') ? 1 : 0.3);
+  const groom = Math.max(drive.groomL, drive.groomR);
+  const gfSpike = (out.GFL || 0) + (out.GFR || 0) > 0;
+  const prev = f.state;
+  f.stateT += dt;
+  f.touchL = Math.max(0, f.touchL - dt); f.touchR = Math.max(0, f.touchR - dt);
+
+  // behaviour selection: flight > groom > feed > walk
+  if (f.state === 'flight') {
+    if (f.stateT > 0.65) { f.state = 'land'; f.stateT = 0; }
+  } else if (gfSpike && f.state !== 'land') {
+    const awayRight = drive.escL >= drive.escR;          // threat side = the side whose escape DNs fire
+    const dir = f.th + (awayRight ? 1 : -1) * 1.1;
+    f.fvx = Math.cos(dir) * 55; f.fvy = Math.sin(dir) * 55;
+    f.state = 'flight'; f.stateT = 0;
+    f.escapeWhy = `DNp01 発火（左 ${Math.round(out.GFL)}・右 ${Math.round(out.GFR)} Hz）→ ${awayRight ? '右' : '左'}へ`;
+  } else if (f.state === 'land') {
+    if (f.stateT > 0.3) { f.state = 'walk'; f.stateT = 0; }
+  } else if (groom > 40 || (f.state === 'groom' && (groom > 22 || f.stateT < 0.6))) { f.state = 'groom';
+  } else if (drive.MN9 > 15 || (f.state === 'feed' && drive.MN9 > 8)) { f.state = 'feed';
+  } else { f.state = 'walk'; }
+  if (f.state !== prev) { if (f.state !== 'flight') f.stateT = 0; onState(prev, f.state, out); }
+
+  // motion
+  if (f.state === 'flight') {
+    const u = f.stateT / 0.65;
+    f.alt = Math.sin(Math.PI * clamp(u, 0, 1));
+    f.x += f.fvx * dt; f.y += f.fvy * dt; f.th = Math.atan2(f.fvy, f.fvx);
+    f.prob = ema(f.prob, 0, 0.3);
+  } else {
+    f.alt = ema(f.alt, 0, 0.4);
+    const walking = f.state === 'walk';
+    const target = walking ? 13 : 0;
+    f.v = ema(f.v, target, walking ? 0.08 : 0.35);
+    // exploratory turning (body), wall avoidance (body), DNa02 asymmetry (brain)
+    f.om += (-f.om / 0.4) * dt + (Math.random() - 0.5) * 9 * Math.sqrt(dt);
+    const toC = wrap(Math.atan2(AH / 2 - f.y, AW / 2 - f.x) - f.th);
+    const wall = Math.min(f.x, AW - f.x, f.y, AH - f.y);
+    const avoid = wall < 7 ? Math.sign(toC) * (7 - wall) * 0.9 : 0;
+    const dna02 = (drive.DNa02R - drive.DNa02L) * 0.02;
+    if (walking) f.th = wrap(f.th + (f.om + avoid + dna02) * dt);
+    f.x += Math.cos(f.th) * f.v * dt; f.y += Math.sin(f.th) * f.v * dt;
+    f.gait += f.v * dt * 2.4;
+    f.prob = ema(f.prob, f.state === 'feed' ? clamp(drive.MN9 / 55, 0.35, 1) : 0, 0.25);
+  }
+  f.x = clamp(f.x, 1.5, AW - 1.5); f.y = clamp(f.y, 1.5, AH - 1.5);
+  if (f.state === 'groom') f.groomPh += dt * 14;
+
+  // body contact with the world
+  if (f.state !== 'flight') {
+    for (const d of world.dusts) if (Math.hypot(f.x - d.x, f.y - d.y) < d.r) {
+      // walking through dust coats the head (standing still in it does not)
+      f.dustL = clamp(f.dustL + dt * f.v * (0.03 + Math.random() * 0.03), 0, 1);
+      f.dustR = clamp(f.dustR + dt * f.v * (0.03 + Math.random() * 0.03), 0, 1);
+    }
+  }
+  // grooming removes dust, at the rate the grooming DNs fire on each side
+  if (f.state === 'groom') {
+    f.dustL = clamp(f.dustL - dt * 0.55 * (drive.groomL / 150), 0, 1);
+    f.dustR = clamp(f.dustR - dt * 0.55 * (drive.groomR / 150), 0, 1);
+  }
+  // feeding consumes the patch in proportion to MN9
+  if (f.state === 'feed' && f.onPatch) f.onPatch.amount = clamp(f.onPatch.amount - dt * 0.05 * (drive.MN9 / 50), 0, 1);
+
+  // shadows fly on, and are gone once they pass
+  for (const s of world.shadows) { s.x += s.vx * dt; s.y += s.vy * dt; s.life += dt; }
+  world.shadows = world.shadows.filter((s) => s.life < 3 && s.x > -20 && s.x < AW + 20 && s.y > -20 && s.y < AH + 20);
+  if (predatorOn) {
+    predatorTimer += dt;
+    if (predatorTimer > 7) { predatorTimer = 0; const a = Math.random() * 6.283; launchShadow(f.x + Math.cos(a) * 45, f.y + Math.sin(a) * 45); }
+  }
+  world.trail.push([f.x, f.y]); if (world.trail.length > 400) world.trail.shift();
+  world.t += dt;
+}
+
+const BEH = {
+  walk: ['🚶', '歩行', () => '刺激がないときは体の既定動作でうろうろ歩きます'],
+  feed: ['👅', '摂食（口吻を伸ばす）', () => `MN9 ${Math.round(drive.MN9)} Hz ＞ 15 Hz`],
+  groom: ['🧹', '身づくろい', () => `DNg84/DNg35 ${Math.round(Math.max(drive.groomL, drive.groomR))} Hz ＞ 40 Hz`],
+  flight: ['🪽', '逃避（離陸）', () => world.fly.escapeWhy || ''],
+  land: ['🛬', '着地', () => ''],
+};
+function onState(prev, now, out) {
+  const f = world.fly;
+  if (now === 'feed') log(`👅 <b>摂食</b>: 甘味 GRN ${Math.round(inputs.sugar || 0)} Hz → MN9 ${Math.round(drive.MN9)} Hz`);
+  if (now === 'groom') log(`🧹 <b>身づくろい</b>: 頭の毛への刺激 → DNg84/DNg35 ${Math.round(Math.max(drive.groomL, drive.groomR))} Hz` + ((inputs.sugar || 0) > 0 ? '（砂糖の上だが MN9 は抑えられている）' : ''));
+  if (now === 'flight') log(`🪽 <b>離陸</b>: ${f.escapeWhy}`);
+  if (prev === 'feed' && now === 'walk') log(f.onPatch && f.onPatch.amount <= 0.02 ? '砂糖を食べ終えた' : `摂食をやめた（MN9 ${Math.round(drive.MN9)} Hz）`);
+  if (prev === 'groom' && now !== 'groom') log('身づくろい終了');
+}
+
+// ------------------------------------------------------------------ drawing: arena + fly
+const cv = $('arena'), g = cv.getContext('2d');
+let S = 8, dpr = 1;
+function resizeArena() {
+  dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth; S = w / AW;
+  cv.width = Math.round(w * dpr); cv.height = Math.round(AH * S * dpr); cv.style.height = AH * S + 'px';
+}
+function drawArena(now) {
+  const f = world.fly;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = css('--floor'); g.fillRect(0, 0, AW * S, AH * S);
+  g.strokeStyle = css('--floor-grid'); g.lineWidth = 1;
+  for (let x = 10; x < AW; x += 10) { g.beginPath(); g.moveTo(x * S + 0.5, 0); g.lineTo(x * S + 0.5, AH * S); g.stroke(); }
+  for (let y = 10; y < AH; y += 10) { g.beginPath(); g.moveTo(0, y * S + 0.5); g.lineTo(AW * S, y * S + 0.5); g.stroke(); }
+  g.fillStyle = css('--muted'); g.font = '10px system-ui, sans-serif'; g.fillText('10 mm', 6, AH * S - 6);
+  // dust
+  for (const d of world.dusts) {
+    for (const [px, py, a] of d.pts) { g.fillStyle = `rgba(128,118,100,${0.35 * a})`; g.beginPath(); g.arc((d.x + px) * S, (d.y + py) * S, 1.6, 0, 6.283); g.fill(); }
+    g.fillStyle = css('--ink-2'); g.font = '11px system-ui, sans-serif'; g.textAlign = 'center'; g.fillText('ほこり', d.x * S, (d.y - d.r - 1) * S); g.textAlign = 'start';
+  }
+  // patches
+  const PC = { sugar: ['#f7f1d8', '#c9a227', '砂糖'], bitter: ['#d9c2a8', '#7a4a1e', '苦味'], mix: ['#efe0bf', '#9a6a22', '砂糖＋苦味'], water: ['#d4e8f7', '#2a78d6', '水'] };
+  for (const p of world.patches) {
+    const [fill, edge, name] = PC[p.type];
+    g.globalAlpha = 0.25 + 0.75 * p.amount;
+    g.fillStyle = fill; g.strokeStyle = edge; g.lineWidth = 1.5;
+    g.beginPath(); g.arc(p.x * S, p.y * S, p.r * S * Math.sqrt(0.3 + 0.7 * p.amount), 0, 6.283); g.fill(); g.stroke();
+    if (p.type === 'mix') { g.strokeStyle = '#7a4a1e'; g.lineWidth = 1; for (let k = -2; k <= 2; k++) { g.beginPath(); g.moveTo((p.x - 2 + k) * S, (p.y + 2) * S); g.lineTo((p.x + 2 + k) * S, (p.y - 2) * S); g.stroke(); } }
+    g.globalAlpha = 1;
+    g.fillStyle = css('--ink-2'); g.font = '11px system-ui, sans-serif'; g.textAlign = 'center';
+    g.fillText(p.amount > 0.02 ? name : name + '（空）', p.x * S, (p.y + p.r + 2.4) * S); g.textAlign = 'start';
+  }
+  // trail
+  g.strokeStyle = css('--axis'); g.lineWidth = 1; g.beginPath();
+  world.trail.forEach(([x, y], i) => (i ? g.lineTo(x * S, y * S) : g.moveTo(x * S, y * S))); g.stroke();
+  // fly
+  drawFly(f, now);
+  // shadows (drawn over everything: they are above the fly)
+  for (const s of world.shadows) {
+    const grd = g.createRadialGradient(s.x * S, s.y * S, 0, s.x * S, s.y * S, s.R * S * 1.4);
+    grd.addColorStop(0, 'rgba(10,10,10,0.55)'); grd.addColorStop(0.7, 'rgba(10,10,10,0.35)'); grd.addColorStop(1, 'rgba(10,10,10,0)');
+    g.fillStyle = grd; g.beginPath(); g.arc(s.x * S, s.y * S, s.R * S * 1.4, 0, 6.283); g.fill();
+  }
+}
+function drawFly(f, now) {
+  const k = S * FLY_DRAW * (1 + 0.25 * f.alt);
+  g.save();
+  if (f.alt > 0.02) { // ground shadow while airborne
+    g.fillStyle = 'rgba(0,0,0,0.18)'; g.beginPath();
+    g.ellipse((f.x + 1.2 * f.alt) * S, (f.y + 1.8 * f.alt) * S, 0.8 * S * FLY_DRAW, 1.3 * S * FLY_DRAW, f.th + Math.PI / 2, 0, 6.283); g.fill();
+  }
+  g.translate(f.x * S, f.y * S); g.rotate(f.th + Math.PI / 2); g.scale(k, k);
+  g.lineCap = 'round';
+  // legs: tripod gait while walking, front legs to the head while grooming
+  const legs = [[-1, -0.42, -0.9, -0.55], [-1, -0.25, -1.05, 0.05], [-1, -0.08, -0.9, 0.7], [1, -0.42, 0.9, -0.55], [1, -0.25, 1.05, 0.05], [1, -0.08, 0.9, 0.7]];
+  g.strokeStyle = '#3b2c1a'; g.lineWidth = 0.075;
+  legs.forEach(([side, by, tx, ty], i) => {
+    const tripod = (i === 0 || i === 4 || i === 2) ? 0 : Math.PI;
+    let sw = f.state === 'walk' || f.state === 'land' ? Math.sin(f.gait + tripod) * 0.22 : 0;
+    let x2 = tx, y2 = ty + sw;
+    if (f.state === 'groom' && (i === 0 || i === 3)) { x2 = side * (0.12 + 0.08 * Math.sin(f.groomPh + (side > 0 ? 0 : 1.6))); y2 = -1.05 + 0.1 * Math.cos(f.groomPh * 1.3); }
+    if (f.state === 'flight') { x2 = tx * 0.5; y2 = ty * 0.4 + 0.2; }
+    const mx = (side * 0.3 + x2) / 2 + side * 0.18, my = (by + y2) / 2;
+    g.beginPath(); g.moveTo(side * 0.22, by); g.quadraticCurveTo(mx, my, x2, y2); g.stroke();
+  });
+  // wings
+  const spread = f.state === 'flight' ? 1 : 0;
+  const flap = spread ? 0.35 * Math.sin(now / 18) : 0;
+  g.fillStyle = 'rgba(200,215,230,0.55)'; g.strokeStyle = 'rgba(90,100,120,0.6)'; g.lineWidth = 0.03;
+  for (const side of [-1, 1]) {
+    g.save(); g.translate(side * 0.12, -0.2); g.rotate(side * (0.18 + spread * (1.15 + flap)));
+    g.beginPath(); g.ellipse(0, 0.75, 0.36, 0.85, 0, 0, 6.283); g.fill(); g.stroke(); g.restore();
+  }
+  // abdomen, thorax, head
+  g.fillStyle = '#b08850'; g.beginPath(); g.ellipse(0, 0.55, 0.42, 0.72, 0, 0, 6.283); g.fill();
+  g.strokeStyle = 'rgba(60,40,20,0.55)'; g.lineWidth = 0.09;
+  for (const yy of [0.45, 0.7, 0.95]) { g.beginPath(); g.moveTo(-0.34, yy); g.quadraticCurveTo(0, yy + 0.08, 0.34, yy); g.stroke(); }
+  g.fillStyle = '#8a6636'; g.beginPath(); g.ellipse(0, -0.28, 0.4, 0.42, 0, 0, 6.283); g.fill();
+  // proboscis
+  if (f.prob > 0.03) {
+    g.strokeStyle = '#6b4a2a'; g.lineWidth = 0.12;
+    g.beginPath(); g.moveTo(0, -0.95); g.lineTo(0, -0.95 - 0.55 * f.prob); g.stroke();
+    g.fillStyle = '#6b4a2a'; g.beginPath(); g.ellipse(0, -0.97 - 0.55 * f.prob, 0.1, 0.07, 0, 0, 6.283); g.fill();
+  }
+  g.fillStyle = '#7a5a30'; g.beginPath(); g.ellipse(0, -0.82, 0.36, 0.24, 0, 0, 6.283); g.fill();
+  g.fillStyle = '#b3261e';
+  for (const side of [-1, 1]) { g.beginPath(); g.ellipse(side * 0.27, -0.84, 0.16, 0.21, side * 0.3, 0, 6.283); g.fill(); }
+  // dust on the head
+  const dust = (f.dustL + f.dustR) / 2;
+  if (dust > 0.02) { g.fillStyle = `rgba(150,140,120,${0.8 * dust})`;
+    for (let q = 0; q < 9; q++) { const a = q * 2.1, r = 0.25 + (q % 3) * 0.08; g.beginPath(); g.arc(Math.cos(a) * r, -0.82 + Math.sin(a) * r * 0.7, 0.05, 0, 6.283); g.fill(); } }
+  g.restore();
+}
+
+// ------------------------------------------------------------------ drawing: brain map
+const bm = $('brainmap'), bg = bm.getContext('2d');
+let pos = null, bmBack = null, bmW = 0, bmH = 0, pxX = null, pxY = null;
+const glow = [];   // [time, index]
+async function loadPositions() {
+  const res = await fetch('../flybrain/data/pos783.bin.gz?v=1');
+  const raw = new Uint8Array(await new Response(res.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+  const n = new DataView(raw.buffer).getUint32(4, true);
+  pos = { n, x: new Uint16Array(raw.buffer.slice(8, 8 + 2 * n)), y: new Uint16Array(raw.buffer.slice(8 + 2 * n, 8 + 4 * n)), c: raw.slice(8 + 4 * n, 8 + 5 * n) };
+  resizeBrain();
+}
+function resizeBrain() {
+  if (!pos) return;
+  const d = window.devicePixelRatio || 1;
+  bmW = bm.clientWidth; bmH = Math.round(bmW / 2.08);
+  bm.width = Math.round(bmW * d); bm.height = Math.round(bmH * d); bm.style.height = bmH + 'px';
+  pxX = new Float32Array(pos.n); pxY = new Float32Array(pos.n);
+  const pad = 6;
+  for (let i = 0; i < pos.n; i++) { pxX[i] = (pad + pos.x[i] / 65535 * (bmW - 2 * pad)) * d; pxY[i] = (pad + pos.y[i] / 65535 * (bmH - 2 * pad)) * d; }
+  // static background: every neuron, faint
+  bmBack = document.createElement('canvas'); bmBack.width = bm.width; bmBack.height = bm.height;
+  const b = bmBack.getContext('2d'); const img = b.createImageData(bm.width, bm.height);
+  const dark = matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark';
+  const base = dark ? 200 : 60;
+  for (let i = 0; i < pos.n; i++) {
+    if (pos.c[i] === 255) continue;
+    const o = ((pxY[i] | 0) * bm.width + (pxX[i] | 0)) * 4;
+    img.data[o] = base; img.data[o + 1] = base; img.data[o + 2] = base; img.data[o + 3] = Math.min(255, img.data[o + 3] + 14);
+  }
+  b.putImageData(img, 0, 0);
+}
+function drawBrain(now) {
+  if (!bmBack) return;
+  bg.setTransform(1, 0, 0, 1, 0, 0);
+  bg.clearRect(0, 0, bm.width, bm.height);
+  bg.drawImage(bmBack, 0, 0);
+  const cols = [css('--c-input'), css('--c-central'), css('--c-output')];
+  const d = window.devicePixelRatio || 1, sz = 2.2 * d;
+  while (glow.length && now - glow[0][0] > 350) glow.shift();
+  for (let pass = 0; pass < 3; pass++) {
+    bg.fillStyle = cols[pass];
+    for (const [t, i] of glow) {
+      const c = pos.c[i], grp = c === 0 ? 0 : (c === 6 || c === 7) ? 2 : 1;
+      if (grp !== pass) continue;
+      bg.globalAlpha = 1 - (now - t) / 350;
+      bg.fillRect(pxX[i] - sz / 2, pxY[i] - sz / 2, grp === 2 ? sz * 1.8 : sz, grp === 2 ? sz * 1.8 : sz);
+    }
+  }
+  bg.globalAlpha = 1;
+}
+
+// ------------------------------------------------------------------ sparkline
+const sp = $('spark'), sg = sp.getContext('2d');
+const hist = [];
+function drawSpark() {
+  const d = window.devicePixelRatio || 1, W = sp.clientWidth, H = sp.clientHeight;
+  if (sp.width !== Math.round(W * d)) { sp.width = Math.round(W * d); sp.height = Math.round(H * d); }
+  sg.setTransform(d, 0, 0, d, 0, 0); sg.clearRect(0, 0, W, H);
+  const N = 500, maxV = Math.max(200000, ...hist) * 1.05, y = (v) => H - 2 - (v / maxV) * (H - 14);
+  sg.strokeStyle = css('--grid'); sg.beginPath(); sg.moveTo(0, H - 1.5); sg.lineTo(W, H - 1.5); sg.stroke();
+  sg.setLineDash([3, 3]); sg.strokeStyle = css('--c-output'); sg.beginPath(); sg.moveTo(0, y(150000)); sg.lineTo(W, y(150000)); sg.stroke(); sg.setLineDash([]);
+  sg.strokeStyle = css('--c-central'); sg.lineWidth = 1.5; sg.beginPath();
+  hist.forEach((v, i) => { const x = W - (hist.length - 1 - i) * (W / N); i ? sg.lineTo(x, y(v)) : sg.moveTo(x, y(v)); }); sg.stroke();
+  sg.fillStyle = css('--muted'); sg.font = '10px system-ui, sans-serif';
+  sg.fillText(`${Math.round((hist[hist.length - 1] || 0) / 1000)}k/秒`, 4, 10);
+}
+
+// ------------------------------------------------------------------ log / hint / status
+function log(html) {
+  const el = document.createElement('div');
+  el.innerHTML = `<span style="color:var(--muted)">${world.t.toFixed(1)}s</span> ${html}`;
+  $('log').prepend(el);
+  while ($('log').children.length > 60) $('log').lastChild.remove();
+}
+const HINTS = {
+  free: '道具を選んでアリーナをクリックしてください。', feed: '砂糖に口が触れると、甘味の味覚ニューロン → MN9 が発火して口吻を伸ばします。',
+  bitter: '真ん中は砂糖＋苦味。苦味の味覚ニューロンが MN9 を止めるので、ハエは食べずに通り過ぎます。', dust: 'ほこりを通ると頭の毛が刺激され、身づくろい用の下行性ニューロンが発火します。',
+  predator: '7秒ごとに影が迫ります。LC4/LPLC2 → ジャイアントファイバー DNp01 が発火すると離陸します。', all: '全部入り。ほこりまみれで砂糖に着くと、MN9 が抑えられて食べられません。',
+};
+const TOOL_HINT = { sugar: 'クリックで砂糖を置く', bitter: 'クリックで苦味を置く', mix: 'クリックで砂糖＋苦味を置く', water: 'クリックで水を置く', dust: 'クリックでほこり。ハエの上なら頭に直接', shadow: 'クリックした場所からハエに向かって影が迫る', touch: 'ハエの頭の左右どちらかをクリック', move: 'ハエをドラッグ', erase: '物をクリックで消す' };
+function hint(s) { $('hint').textContent = HINTS[s] || ''; }
+
+// ------------------------------------------------------------------ worker loop
+let worker, ready = false, busy = false, paused = false, speed = 1, simAcc = 0, lastFrame = performance.now();
+let perf = { wall: 0, sim: 0, spikes: 0, awake: 0, n: 0 }, runaway = 0, runawayShown = false;
+function startWorker() {
+  worker = new Worker('brain-worker.js', { type: 'module' });
+  worker.onmessage = (e) => {
+    const m = e.data;
+    if (m.type === 'progress') {
+      if (m.phase === 'download' && m.total) { $('load-bar').style.width = (m.loaded / m.total * 100) + '%'; $('load-msg').textContent = `脳の配線を読み込み中… ${(m.loaded / 1e6).toFixed(1)} / ${(m.total / 1e6).toFixed(1)} MB`; }
+      if (m.phase === 'decompress') $('load-msg').textContent = '展開して WebAssembly に組み立て中…';
+    } else if (m.type === 'ready') {
+      ready = true; $('overlay').hidden = true;
+      for (const id of ['btn-play', 'btn-reset', 'btn-smell']) $(id).disabled = false;
+      perf.n = m.n;
+      log(`脳の準備完了: ${m.n.toLocaleString()} ニューロン・${m.nnz.toLocaleString()} 結合`);
+    } else if (m.type === 'tick') {
+      busy = false;
+      onTick(m);
+    } else if (m.type === 'error') {
+      $('load-msg').textContent = 'エラー: ' + m.message; $('overlay').hidden = false;
+    }
+  };
+  worker.postMessage({ type: 'init' });
+}
+function sendTick() {
+  inputs = sense();
+  busy = true;
+  worker.postMessage({ type: 'tick', ms: TICK, inputs });
+}
+function onTick(m) {
+  lastOut = m.out;
+  bodyStep(m.out, m.ms / 1000);
+  const now = performance.now();
+  for (let k = 0; k < m.fired.length; k++) glow.push([now, m.fired[k]]);
+  if (glow.length > 12000) glow.splice(0, glow.length - 12000);
+  const rate = m.spikes / (m.ms / 1000);
+  hist.push(rate); if (hist.length > 500) hist.shift();
+  perf.wall = ema(perf.wall, m.wall, 0.1); perf.spikes = rate; perf.awake = m.awake; perf.t = m.t;
+  // runaway: the model's self-sustaining state
+  runaway = rate > 150000 ? runaway + 1 : 0;
+  if (runaway > 25 && !runawayShown) {
+    runawayShown = true;
+    $('warn').innerHTML = '⚠️ <b>暴走（自己持続）状態</b>: 刺激をやめても脳全体が毎秒数十万回発火し続けています。これはこのモデル（Shiu et al. の LIF を v783 の配線で動かしたもの）自体の性質で、元の Brian2 でも同じことが起きます。' + ($('auto-reset').checked ? ' 2秒後に脳をリセットします。' : '');
+    $('warn').classList.add('show');
+    log('⚠️ <b>暴走を検出</b>（' + Math.round(rate / 1000) + 'k スパイク/秒）');
+    if ($('auto-reset').checked) setTimeout(resetBrain, 2000);
+  }
+  if (!paused && simAcc >= TICK) { simAcc -= TICK; sendTick(); }
+}
+function resetBrain() {
+  if (!ready) return;
+  world.smell = false; $('btn-smell').classList.remove('on');
+  worker.postMessage({ type: 'reset' });
+  runaway = 0; runawayShown = false; $('warn').classList.remove('show');
+  log('脳をリセット（全ニューロンを静止電位へ）');
+}
+
+let uiTimer = 0;
+function frame(now) {
+  const dtReal = Math.min(100, now - lastFrame); lastFrame = now;
+  if (ready && !paused) { simAcc = Math.min(simAcc + dtReal * speed, 200); if (!busy && simAcc >= TICK) { simAcc -= TICK; sendTick(); } }
+  drawArena(now); drawBrain(now);
+  if (now - uiTimer > 100) { uiTimer = now; updatePanels(); drawSpark(); }
+  requestAnimationFrame(frame);
+}
+function updatePanels() {
+  for (const [k] of IN_ROWS) setRow(inRefs[k], inputs[k] || 0);
+  for (const [k] of OUT_ROWS) if (k !== '__sec') setRow(outRefs[k], drive[k] || 0,
+    k === 'MN9' ? 15 : (k === 'groomL' || k === 'groomR') ? 40 : k.startsWith('GF') ? 1 : undefined);
+  const f = world.fly, b = BEH[f.state] || BEH.walk;
+  $('beh-em').textContent = b[0]; $('beh-t').textContent = ready ? b[1] : '準備中'; $('beh-why').textContent = ready ? b[2]() : '';
+  const rt = perf.wall ? TICK / perf.wall : 0;
+  $('status').innerHTML = ready ? `<span>脳の時間 <b>${(perf.t / 1000 || 0).toFixed(1)} s</b></span><span>全脳 <b>${Math.round(perf.spikes).toLocaleString()}</b> スパイク/秒</span><span>計算中 <b>${perf.awake}</b> ニューロン</span><span>計算速度 <b>×${rt.toFixed(1)}</b> 実時間</span><span>ほこり 左 ${Math.round(f.dustL * 100)}% ・右 ${Math.round(f.dustR * 100)}%</span>` : '';
+}
+
+// ------------------------------------------------------------------ input
+let tool = 'sugar', dragging = false;
+$('tools').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  tool = b.dataset.tool;
+  for (const x of $('tools').children) x.classList.toggle('on', x === b);
+  $('hint').textContent = TOOL_HINT[tool];
+});
+function toMM(e) { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / S, (e.clientY - r.top) / S]; }
+cv.addEventListener('pointerdown', (e) => {
+  const [x, y] = toMM(e), f = world.fly;
+  const onFly = Math.hypot(x - f.x, y - f.y) < 3;
+  if (tool === 'move') { if (onFly) { dragging = true; cv.setPointerCapture(e.pointerId); } return; }
+  if (tool === 'sugar' || tool === 'bitter' || tool === 'mix' || tool === 'water') addPatch(tool, x, y);
+  if (tool === 'dust') { if (onFly) { f.dustL = f.dustR = 1; log('🌫 頭にほこりをかけた'); } else addDust(x, y); }
+  if (tool === 'shadow') launchShadow(x, y);
+  if (tool === 'touch') {
+    const side = Math.sin(f.th) * (x - f.x) - Math.cos(f.th) * (y - f.y) > 0 ? 'L' : 'R';
+    if (side === 'L') f.touchL = 0.4; else f.touchR = 0.4;
+    log(`👆 頭の${side === 'L' ? '左' : '右'}側に触れた`);
+  }
+  if (tool === 'erase') {
+    world.patches = world.patches.filter((p) => Math.hypot(p.x - x, p.y - y) > p.r + 1);
+    world.dusts = world.dusts.filter((d) => Math.hypot(d.x - x, d.y - y) > d.r);
+  }
+});
+cv.addEventListener('pointermove', (e) => { if (dragging) { const [x, y] = toMM(e); world.fly.x = clamp(x, 2, AW - 2); world.fly.y = clamp(y, 2, AH - 2); world.trail = []; } });
+cv.addEventListener('pointerup', () => { dragging = false; });
+$('btn-play').addEventListener('click', () => { paused = !paused; $('btn-play').textContent = paused ? '▶ 再開' : '⏸ 一時停止'; });
+$('btn-reset').addEventListener('click', resetBrain);
+$('speed').addEventListener('change', (e) => { speed = +e.target.value; });
+$('scenario').addEventListener('change', (e) => { scenario(e.target.value); log(`シナリオ: ${e.target.selectedOptions[0].textContent}`); });
+$('btn-smell').addEventListener('click', () => {
+  world.smell = !world.smell; $('btn-smell').classList.toggle('on', world.smell);
+  log(world.smell ? '🧪 匂いの受容ニューロン（ORN DM1、左右）に 20 Hz の入力を開始' : '🧪 匂いの入力を停止');
+});
+window.addEventListener('resize', () => { resizeArena(); resizeBrain(); });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', resizeBrain);
+
+resizeArena();
+scenario('feed');
+startWorker();
+loadPositions();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

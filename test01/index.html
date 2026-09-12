@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ハエの脳 test01 — 砂糖の味で口が動くか</title>
+<meta name="description" content="FlyWire コネクトームの全脳シミュレーション（Shiu et al. 2024）を再実行した結果">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --ring: rgba(11,11,11,0.10);
+  --hop0: #0d366b;
+  --hop1: #1c5cab;
+  --hop2: #3987e5;
+  --hop3: #86b6ef;
+  --series: #2a78d6;
+  --accent: #eb6834;
+  --code-bg: #f0efec;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --ring: rgba(255,255,255,0.10);
+    --hop0: #cde2fb;
+    --hop1: #86b6ef;
+    --hop2: #3987e5;
+    --hop3: #1c5cab;
+    --series: #3987e5;
+    --accent: #d95926;
+    --code-bg: #262624;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --ring: rgba(255,255,255,0.10);
+  --hop0: #cde2fb;
+  --hop1: #86b6ef;
+  --hop2: #3987e5;
+  --hop3: #1c5cab;
+  --series: #3987e5;
+  --accent: #d95926;
+  --code-bg: #262624;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font: 15px/1.75 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+  padding-inline: 16px;
+}
+main { max-width: 980px; margin: 0 auto; padding-block: 40px 80px; }
+h1 { font-size: 1.9rem; line-height: 1.3; margin: 0 0 8px; letter-spacing: -0.01em; }
+h2 { font-size: 1.2rem; margin: 56px 0 6px; }
+.lede { color: var(--ink-2); margin: 0 0 4px; max-width: 46em; }
+.eyebrow { color: var(--muted); font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; margin: 0 0 10px; }
+p { max-width: 46em; }
+.sub { color: var(--ink-2); margin: 0 0 16px; font-size: 0.93rem; }
+code { background: var(--code-bg); border-radius: 4px; padding: 1px 5px; font-size: 0.88em; }
+a { color: var(--series); }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 28px 0 8px; }
+.tile { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 16px 18px; }
+.tile .k { color: var(--ink-2); font-size: 0.82rem; }
+.tile .v { font-size: 2rem; font-weight: 650; line-height: 1.25; margin-top: 2px; }
+.tile .v small { font-size: 0.95rem; font-weight: 500; color: var(--ink-2); margin-left: 3px; }
+.tile .n { color: var(--muted); font-size: 0.8rem; margin-top: 2px; }
+
+.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 18px 18px 12px; position: relative; }
+.chart { width: 100%; display: block; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.83rem; color: var(--ink-2); margin: 0 0 10px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+.tip {
+  position: absolute; pointer-events: none; z-index: 5;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--ring);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12); border-radius: 8px;
+  padding: 7px 10px; font-size: 0.8rem; line-height: 1.5; white-space: nowrap;
+}
+.tip b { font-weight: 650; }
+.tip .m { color: var(--ink-2); }
+
+.axis text, .lbl { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.lbl-ink { fill: var(--ink-2); font-size: 11.5px; }
+.lbl-strong { fill: var(--ink); font-size: 11.5px; font-weight: 600; }
+
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 760px) { .two { grid-template-columns: 1fr; } }
+
+.tbl-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.86rem; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 6px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+th { color: var(--ink-2); font-weight: 600; }
+td.id { color: var(--muted); font-size: 0.8rem; }
+tr.hl td { font-weight: 650; }
+details { margin-top: 12px; }
+summary { cursor: pointer; color: var(--ink-2); font-size: 0.9rem; }
+
+.note { border-left: 3px solid var(--axis); padding: 2px 0 2px 14px; color: var(--ink-2); font-size: 0.92rem; }
+ul.plain { padding-left: 1.2em; max-width: 46em; }
+ul.plain li { margin: 4px 0; }
+footer { margin-top: 64px; color: var(--muted); font-size: 0.82rem; }
+#loading { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">hae.satoru.net / test01</p>
+  <h1>ハエの脳に砂糖の味を入れたら、口は動くか</h1>
+  <p class="lede">
+    ショウジョウバエの脳の配線図（コネクトーム）をそのままコンピュータ上で動かす
+    <a href="https://github.com/philshiu/Drosophila_brain_model">philshiu/Drosophila_brain_model</a>
+    （Shiu et al., <i>Nature</i> 2024）を、このサーバーで再実行しました。
+    右側の口にある「甘さを感じる神経」21個だけを刺激して、脳の中を信号がどう広がり、
+    口吻（ハエの口）を伸ばす運動ニューロン <b>MN9</b> まで届くかを見ます。
+  </p>
+  <p id="loading">データを読み込み中…</p>
+
+  <div class="tiles" id="tiles"></div>
+
+  <h2>1. 信号が脳を伝わっていく様子</h2>
+  <p class="sub">
+    1試行（1秒間）のスパイク（神経の発火）を1本ずつ点で表示。縦は発火の多かったニューロン上位160個で、
+    甘味神経から何段のシナプスを経て届くか（段数）でまとめています。点にカーソルを合わせると名前と発火率が出ます。
+  </p>
+  <div class="card">
+    <div class="legend" id="hop-legend"></div>
+    <canvas id="raster" class="chart" role="img" aria-label="スパイクのラスタープロット"></canvas>
+    <div class="tip" id="tip-raster" hidden></div>
+  </div>
+
+  <h2>2. 段ごとの発火の立ち上がり</h2>
+  <p class="sub">
+    30試行を平均した、段ごとの合計スパイク数（10ミリ秒ごと）。刺激した神経（0段）が発火を始め、
+    数ミリ秒遅れて次の段が続きます。
+  </p>
+  <div class="card">
+    <div class="legend" id="psth-legend"></div>
+    <svg id="psth" class="chart" role="img" aria-label="段ごとの発火率の時間変化"></svg>
+    <div class="tip" id="tip-psth" hidden></div>
+  </div>
+
+  <h2>3. どのニューロンがよく発火したか</h2>
+  <p class="sub">
+    30試行平均の発火率 上位25個。細い線は試行間のばらつき（標準偏差）。
+    名前は論文で同定された細胞タイプ、空欄は未命名のニューロン（FlyWire ID の末尾を表示）。
+  </p>
+  <div class="card">
+    <div class="legend"><span><i style="background:var(--series)"></i>ニューロン</span><span><i style="background:var(--accent)"></i>MN9（口吻を伸ばす運動ニューロン）</span></div>
+    <svg id="bars" class="chart" role="img" aria-label="発火率の上位25ニューロン"></svg>
+    <div class="tip" id="tip-bars" hidden></div>
+  </div>
+
+  <div class="two" style="margin-top:12px">
+    <div class="card">
+      <div class="legend"><span><i style="background:var(--series)"></i>段ごとの発火したニューロン数</span></div>
+      <svg id="hops" class="chart" role="img" aria-label="段数ごとの発火ニューロン数"></svg>
+      <div class="tip" id="tip-hops" hidden></div>
+    </div>
+    <div class="card">
+      <div class="legend"><span><i style="background:var(--series)"></i>ニューロン1個（元の結果 vs 再実行）</span></div>
+      <svg id="scatter" class="chart" role="img" aria-label="元の結果と再実行の発火率の比較"></svg>
+      <div class="tip" id="tip-scatter" hidden></div>
+    </div>
+  </div>
+
+  <h2>4. 元の論文の結果を再現できたか</h2>
+  <div id="repro"></div>
+
+  <h2>やったこと</h2>
+  <ul class="plain" id="method"></ul>
+
+  <h2>注意点</h2>
+  <ul class="plain">
+    <li>このモデルは「全ニューロンが同じ性質の単純な神経（LIF）」「シナプスの強さは本数に比例」という大胆な単純化をしています。それでも砂糖→口吻伸展のような行動に対応する経路が配線だけから出てくる、というのが論文の主張です。</li>
+    <li>刺激はポアソン入力（ランダムなタイミング）なので、試行ごと・実行ごとに結果は少しずつ揺れます。</li>
+    <li>サーバーに Python の開発ヘッダがないため Brian2 は低速な numpy モードで動かしました。計算結果は同じで、速度だけが違います。</li>
+    <li>「段数」は興奮性シナプスだけをたどった最短経路です。実際の信号は抑制性の経路や複数経路の合流の影響も受けます。</li>
+    <li>データは FlyWire v630（論文と同じ版）。CC-BY。コードは MIT ライセンス。</li>
+  </ul>
+
+  <details>
+    <summary>表で見る（発火率 上位60ニューロン）</summary>
+    <div class="tbl-wrap"><table id="table"></table></div>
+  </details>
+
+  <footer>
+    シミュレーション: Shiu et al. (2024) “A Drosophila computational brain model reveals sensorimotor processing”, <i>Nature</i> 634. ·
+    コネクトーム: FlyWire Consortium (CC-BY) ·
+    <span id="foot-meta"></span>
+  </footer>
+</main>
+
+<script>
+(async function () {
+  const $ = (id) => document.getElementById(id);
+  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const NS = 'http://www.w3.org/2000/svg';
+  const fmt = (n, d = 0) => Number(n).toLocaleString('ja-JP', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const HOP_LABEL = ['0段（刺激）', '1段', '2段', '3段以上'];
+  const hopKey = (h) => (h == null ? 3 : Math.min(h, 3));
+  const hopVar = (h) => `var(--hop${hopKey(h)})`;
+  const hopColor = (h) => css(`--hop${hopKey(h)}`);
+  const shortName = (n) => n.name || `…${n.id.slice(-6)}`;
+
+  let D;
+  try {
+    D = await (await fetch('data.json', { cache: 'no-store' })).json();
+  } catch (e) {
+    $('loading').textContent = 'いまサーバーでシミュレーションを計算中です。数分後に再読み込みしてください。';
+    return;
+  }
+  $('loading').remove();
+  const M = D.meta;
+
+  // ---------- tiles ----------
+  const tiles = [
+    ['刺激したニューロン', '21', '個', `甘味受容ニューロン（右）を ${M.stim_hz} Hz で`],
+    ['反応して発火したニューロン', fmt(M.active), '個', `脳全体 ${fmt(M.neurons_total)} 個のうち`],
+    ['MN9 の発火率', fmt(M.mn9_rate, 1), 'Hz', `± ${fmt(M.mn9_std, 1)}（口吻を伸ばす運動ニューロン）`],
+    ['元の結果との相関', fmt(M.corr, 3), '', `ニューロンごとの発火率（ピアソン）`],
+  ];
+  $('tiles').innerHTML = tiles.map(([k, v, u, n]) =>
+    `<div class="tile"><div class="k">${k}</div><div class="v">${v}<small>${u}</small></div><div class="n">${n}</div></div>`).join('');
+
+  // ---------- legends ----------
+  const hopLegend = HOP_LABEL.map((l, i) => `<span><i style="background:var(--hop${i})"></i>${l}</span>`).join('');
+  $('hop-legend').innerHTML = hopLegend;
+  $('psth-legend').innerHTML = hopLegend;
+
+  // ---------- tooltip helper ----------
+  function showTip(tip, card, html, x, y) {
+    tip.innerHTML = html;
+    tip.hidden = false;
+    const cw = card.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
+    let left = x + 14, top = y - th - 10;
+    if (left + tw > cw - 4) left = x - tw - 14;
+    if (left < 4) left = 4;
+    if (top < 4) top = y + 16;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+  const el = (tag, attrs, parent) => {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  };
+  const text = (parent, x, y, s, cls, anchor = 'start', extra = {}) => {
+    const t = el('text', { x, y, class: cls, 'text-anchor': anchor, ...extra }, parent);
+    t.textContent = s;
+    return t;
+  };
+
+  // ---------- 1. raster (canvas) ----------
+  const raster = D.raster;
+  const cv = $('raster'), rcard = cv.parentElement, rtip = $('tip-raster');
+  let rGeom = null;
+  function drawRaster() {
+    const W = cv.clientWidth, rowH = W < 560 ? 2.4 : 3, padL = 78, padR = 12, padT = 6, padB = 28;
+    const H = padT + raster.length * rowH + padB;
+    const dpr = window.devicePixelRatio || 1;
+    cv.width = W * dpr; cv.height = H * dpr; cv.style.height = H + 'px';
+    const g = cv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, W, H);
+    const pw = W - padL - padR, x = (t) => padL + (t / 1000) * pw;
+    // grid
+    g.strokeStyle = css('--grid'); g.lineWidth = 1;
+    g.fillStyle = css('--muted'); g.font = '11px system-ui, sans-serif'; g.textAlign = 'center';
+    for (let t = 0; t <= 1000; t += 200) {
+      g.beginPath(); g.moveTo(Math.round(x(t)) + 0.5, padT); g.lineTo(Math.round(x(t)) + 0.5, H - padB); g.stroke();
+      g.fillText(t + (t === 1000 ? ' ms' : ''), x(t), H - padB + 16);
+    }
+    // group labels + separators
+    g.textAlign = 'right';
+    let start = 0;
+    for (let i = 0; i <= raster.length; i++) {
+      const cur = i < raster.length ? hopKey(raster[i].hop) : -1;
+      const prev = hopKey(raster[start].hop);
+      if (i === raster.length || cur !== prev) {
+        const y0 = padT + start * rowH, y1 = padT + i * rowH;
+        g.fillStyle = css('--ink-2');
+        g.fillText(HOP_LABEL[prev], padL - 10, (y0 + y1) / 2 + 4);
+        if (i < raster.length) {
+          g.strokeStyle = css('--axis');
+          g.beginPath(); g.moveTo(padL, y1 + 0.5); g.lineTo(W - padR, y1 + 0.5); g.stroke();
+        }
+        start = i;
+      }
+    }
+    // spikes
+    const tick = Math.max(1.2, rowH - 0.6);
+    raster.forEach((r, i) => {
+      g.fillStyle = hopColor(r.hop);
+      const y = padT + i * rowH + (rowH - tick) / 2;
+      for (const t of r.t) g.fillRect(x(t) - 0.6, y, 1.4, tick);
+    });
+    rGeom = { padL, padR, padT, rowH, pw, W };
+  }
+  cv.addEventListener('mousemove', (ev) => {
+    if (!rGeom) return;
+    const b = cv.getBoundingClientRect(), mx = ev.clientX - b.left, my = ev.clientY - b.top;
+    const i = Math.floor((my - rGeom.padT) / rGeom.rowH);
+    if (mx < rGeom.padL || i < 0 || i >= raster.length) { rtip.hidden = true; return; }
+    const r = raster[i], t = ((mx - rGeom.padL) / rGeom.pw) * 1000;
+    showTip(rtip, rcard, `<b>${shortName(r)}</b> <span class="m">${HOP_LABEL[hopKey(r.hop)]}</span><br>` +
+      `平均 ${fmt(r.rate, 1)} Hz · この試行 ${r.t.length} 回発火<br><span class="m">${fmt(Math.max(0, t))} ms 付近</span>`,
+      mx + (b.left - rcard.getBoundingClientRect().left), my + (b.top - rcard.getBoundingClientRect().top));
+  });
+  cv.addEventListener('mouseleave', () => { rtip.hidden = true; });
+
+  // ---------- 2. PSTH (svg lines) ----------
+  function drawPsth() {
+    const svg = $('psth'); svg.innerHTML = '';
+    const W = svg.clientWidth, H = W < 560 ? 240 : 290, padL = 52, padR = 70, padT = 12, padB = 28;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.style.height = H + 'px';
+    const keys = Object.keys(D.psth).sort();
+    const bin = D.psth_bin_ms, n = D.psth[keys[0]].length;
+    const maxV = Math.max(...keys.flatMap((k) => D.psth[k]));
+    const niceMax = niceCeil(maxV);
+    const x = (i) => padL + ((i + 0.5) * bin / 1000) * (W - padL - padR);
+    const y = (v) => padT + (1 - v / niceMax) * (H - padT - padB);
+    const ax = el('g', { class: 'axis' }, svg);
+    for (const v of ticks(niceMax, 4)) {
+      el('line', { x1: padL, x2: W - padR, y1: y(v), y2: y(v), stroke: css(v === 0 ? '--axis' : '--grid') }, ax);
+      text(ax, padL - 8, y(v) + 4, fmtK(v), 'lbl', 'end');
+    }
+    for (let t = 0; t <= 1000; t += 200) text(ax, padL + (t / 1000) * (W - padL - padR), H - 8, t + (t === 1000 ? ' ms' : ''), 'lbl', 'middle');
+    text(ax, 4, padT + 2, 'スパイク/秒', 'lbl', 'start', { transform: `translate(0,0)`, dy: '0' });
+    const lastY = [];
+    keys.forEach((k) => {
+      const pts = D.psth[k].map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+      el('polyline', { points: pts, fill: 'none', stroke: `var(--hop${k})`, 'stroke-width': 2, 'stroke-linejoin': 'round' }, svg);
+      const tail = D.psth[k].slice(-20), avg = tail.reduce((a, b) => a + b, 0) / tail.length;
+      lastY.push({ k, y: y(avg) });
+    });
+    // direct labels at the right end, de-collided
+    lastY.sort((a, b) => a.y - b.y);
+    for (let i = 1; i < lastY.length; i++) if (lastY[i].y - lastY[i - 1].y < 14) lastY[i].y = lastY[i - 1].y + 14;
+    lastY.forEach(({ k, y: yy }) => text(svg, W - padR + 8, yy + 4, HOP_LABEL[k].replace('（刺激）', ''), 'lbl-ink'));
+    // crosshair
+    const cross = el('line', { y1: padT, y2: H - padB, stroke: css('--axis'), visibility: 'hidden' }, svg);
+    const dots = keys.map((k) => el('circle', { r: 4, fill: `var(--hop${k})`, stroke: css('--surface'), 'stroke-width': 2, visibility: 'hidden' }, svg));
+    const hit = el('rect', { x: padL, y: padT, width: W - padL - padR, height: H - padT - padB, fill: 'transparent' }, svg);
+    const tip = $('tip-psth'), card = svg.parentElement;
+    hit.addEventListener('mousemove', (ev) => {
+      const b = svg.getBoundingClientRect(), mx = ev.clientX - b.left;
+      const i = Math.max(0, Math.min(n - 1, Math.floor(((mx - padL) / (W - padL - padR)) * 1000 / bin)));
+      cross.setAttribute('x1', x(i)); cross.setAttribute('x2', x(i)); cross.setAttribute('visibility', 'visible');
+      keys.forEach((k, j) => { dots[j].setAttribute('cx', x(i)); dots[j].setAttribute('cy', y(D.psth[k][i])); dots[j].setAttribute('visibility', 'visible'); });
+      const cb = card.getBoundingClientRect();
+      showTip(tip, card, `<b>${i * bin}–${(i + 1) * bin} ms</b><br>` +
+        keys.map((k) => `<span class="m">${HOP_LABEL[k]}</span> ${fmt(D.psth[k][i])}`).join('<br>'),
+        x(i) + (b.left - cb.left), ev.clientY - cb.top);
+    });
+    hit.addEventListener('mouseleave', () => { tip.hidden = true; cross.setAttribute('visibility', 'hidden'); dots.forEach((d) => d.setAttribute('visibility', 'hidden')); });
+  }
+
+  // ---------- 3. top-25 bars ----------
+  function drawBars() {
+    const svg = $('bars'); svg.innerHTML = '';
+    const top = D.neurons.slice(0, 25);
+    const mn9 = D.neurons.find((n) => n.name === 'MN9');
+    const rows = top.includes(mn9) || !mn9 ? top : [...top, mn9];
+    const W = svg.clientWidth, rowH = 20, padL = W < 560 ? 104 : 140, padR = 56, padT = 4, padB = 26;
+    const H = padT + rows.length * rowH + padB;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.style.height = H + 'px';
+    const maxV = niceCeil(Math.max(...rows.map((r) => r.rate + r.std)));
+    const x = (v) => padL + (v / maxV) * (W - padL - padR);
+    const ax = el('g', { class: 'axis' }, svg);
+    for (const v of ticks(maxV, 4)) {
+      el('line', { x1: x(v), x2: x(v), y1: padT, y2: H - padB, stroke: css(v === 0 ? '--axis' : '--grid') }, ax);
+      text(ax, x(v), H - 8, v + (v === maxV ? ' Hz' : ''), 'lbl', 'middle');
+    }
+    const tip = $('tip-bars'), card = svg.parentElement;
+    rows.forEach((r, i) => {
+      const yc = padT + i * rowH + rowH / 2, isM = r.name === 'MN9';
+      const gap = mn9 && !top.includes(mn9) && isM ? 0 : 0;
+      text(svg, padL - 8, yc + 4, shortName(r), isM ? 'lbl-strong' : 'lbl-ink', 'end');
+      const w = Math.max(1, x(r.rate) - x(0));
+      el('rect', { x: x(0), y: yc - 6.5 + gap, width: w, height: 13, rx: 3, fill: isM ? 'var(--accent)' : 'var(--series)' }, svg);
+      el('line', { x1: x(Math.max(0, r.rate - r.std)), x2: x(r.rate + r.std), y1: yc, y2: yc, stroke: css('--ink-2'), 'stroke-width': 1, opacity: 0.6 }, svg);
+      if (isM || i === 0) text(svg, x(r.rate + r.std) + 6, yc + 4, fmt(r.rate, 1), 'lbl-ink');
+      const hit = el('rect', { x: 0, y: yc - rowH / 2, width: W, height: rowH, fill: 'transparent' }, svg);
+      hit.addEventListener('mousemove', (ev) => {
+        const cb = card.getBoundingClientRect();
+        showTip(tip, card, `<b>${shortName(r)}</b> <span class="m">${HOP_LABEL[hopKey(r.hop)]}</span><br>` +
+          `${fmt(r.rate, 1)} Hz ± ${fmt(r.std, 1)}<br><span class="m">元の結果 ${fmt(r.orig, 1)} Hz · ID ${r.id}</span>`,
+          ev.clientX - cb.left, ev.clientY - cb.top);
+      });
+      hit.addEventListener('mouseleave', () => { tip.hidden = true; });
+    });
+  }
+
+  // ---------- 4a. hop counts ----------
+  function drawHops() {
+    const svg = $('hops'); svg.innerHTML = '';
+    const hs = D.hops.filter((h) => h.hop <= 5);
+    const W = svg.clientWidth, H = 220, padL = 40, padR = 10, padT = 18, padB = 28;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.style.height = H + 'px';
+    const maxV = niceCeil(Math.max(...hs.map((h) => h.n)));
+    const bw = (W - padL - padR) / hs.length;
+    const y = (v) => padT + (1 - v / maxV) * (H - padT - padB);
+    const ax = el('g', { class: 'axis' }, svg);
+    for (const v of ticks(maxV, 4)) {
+      el('line', { x1: padL, x2: W - padR, y1: y(v), y2: y(v), stroke: css(v === 0 ? '--axis' : '--grid') }, ax);
+      text(ax, padL - 6, y(v) + 4, v, 'lbl', 'end');
+    }
+    const tip = $('tip-hops'), card = svg.parentElement;
+    hs.forEach((h, i) => {
+      const x0 = padL + i * bw + 3, w = bw - 6, top = y(h.n), base = y(0);
+      if (h.n > 0) el('path', { d: roundTop(x0, top, w, base - top, 4), fill: 'var(--series)' }, svg);
+      text(svg, x0 + w / 2, H - 8, h.hop === 0 ? '0段' : `${h.hop}段`, 'lbl', 'middle');
+      text(svg, x0 + w / 2, top - 5, h.n, 'lbl-ink', 'middle');
+      const hit = el('rect', { x: x0, y: padT, width: w, height: H - padT - padB, fill: 'transparent' }, svg);
+      hit.addEventListener('mousemove', (ev) => {
+        const cb = card.getBoundingClientRect();
+        showTip(tip, card, `<b>${h.hop}段</b><br>発火したニューロン ${h.n} 個<br><span class="m">平均 ${fmt(h.mean_rate, 1)} Hz</span>`, ev.clientX - cb.left, ev.clientY - cb.top);
+      });
+      hit.addEventListener('mouseleave', () => { tip.hidden = true; });
+    });
+    text(svg, padL, 11, '発火したニューロン数', 'lbl');
+  }
+
+  // ---------- 4b. scatter: original vs rerun ----------
+  function drawScatter() {
+    const svg = $('scatter'); svg.innerHTML = '';
+    const pts = D.neurons;
+    const W = svg.clientWidth, H = 220, pad = { l: 40, r: 10, t: 18, b: 28 };
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.style.height = H + 'px';
+    const maxV = niceCeil(Math.max(...pts.map((p) => Math.max(p.rate, p.orig))));
+    const x = (v) => pad.l + (v / maxV) * (W - pad.l - pad.r);
+    const y = (v) => pad.t + (1 - v / maxV) * (H - pad.t - pad.b);
+    const ax = el('g', { class: 'axis' }, svg);
+    for (const v of ticks(maxV, 4)) {
+      el('line', { x1: pad.l, x2: W - pad.r, y1: y(v), y2: y(v), stroke: css(v === 0 ? '--axis' : '--grid') }, ax);
+      text(ax, pad.l - 6, y(v) + 4, v, 'lbl', 'end');
+      text(ax, x(v), H - 8, v, 'lbl', 'middle');
+    }
+    el('line', { x1: x(0), y1: y(0), x2: x(maxV), y2: y(maxV), stroke: css('--axis') }, svg);
+    text(svg, pad.l, 11, '再実行 (Hz)', 'lbl');
+    text(svg, W - pad.r, H - 16, '元の結果 (Hz) →', 'lbl', 'end');
+    const tip = $('tip-scatter'), card = svg.parentElement;
+    pts.forEach((p) => {
+      const c = el('circle', { cx: x(p.orig), cy: y(p.rate), r: 3, fill: 'var(--series)', 'fill-opacity': 0.75, stroke: css('--surface'), 'stroke-width': 1 }, svg);
+      c.addEventListener('mousemove', (ev) => {
+        const cb = card.getBoundingClientRect();
+        showTip(tip, card, `<b>${shortName(p)}</b><br>元の結果 ${fmt(p.orig, 1)} Hz<br>再実行 ${fmt(p.rate, 1)} Hz`, ev.clientX - cb.left, ev.clientY - cb.top);
+        c.setAttribute('r', 5);
+      });
+      c.addEventListener('mouseleave', () => { tip.hidden = true; c.setAttribute('r', 3); });
+    });
+  }
+
+  // ---------- text sections ----------
+  const diffSp = ((M.spikes - M.orig_spikes) / M.orig_spikes) * 100;
+  $('repro').innerHTML = `
+    <p>リポジトリには作者が実行した同じ実験の結果（<code>results/example/sugarR.parquet</code>）が同梱されているので、ニューロンごとに発火率を突き合わせました。</p>
+    <div class="tiles" style="margin-top:12px">
+      <div class="tile"><div class="k">総スパイク数（30試行）</div><div class="v">${fmt(M.spikes)}</div><div class="n">元の結果 ${fmt(M.orig_spikes)}（${diffSp >= 0 ? '+' : ''}${fmt(diffSp, 1)}%）</div></div>
+      <div class="tile"><div class="k">発火したニューロン</div><div class="v">${fmt(M.active)}<small>個</small></div><div class="n">元の結果 ${fmt(M.orig_active)} 個 · 両方で発火 ${fmt(M.shared_active)} 個</div></div>
+      <div class="tile"><div class="k">MN9</div><div class="v">${fmt(M.mn9_rate, 1)}<small>Hz</small></div><div class="n">元の結果 ${fmt(M.mn9_orig, 1)} Hz</div></div>
+    </div>
+    <p id="repro-verdict"></p>`;
+  const stim = D.neurons.filter((n) => n.hop === 0);
+  const stimOrig = stim.reduce((a, n) => a + n.orig, 0) / stim.length;
+  const stimNew = stim.reduce((a, n) => a + n.rate, 0) / stim.length;
+  const stimNote = stimOrig > stimNew * 1.15
+    ? `ただし刺激した甘味神経の発火率が、同梱の結果では平均 ${fmt(stimOrig)} Hz、再実行では ${fmt(stimNew)} Hz でした。同梱ファイルは <b>200 Hz 刺激</b>で作られたとみられます（現在のコードの既定値は 150 Hz で、ノートブックの説明文には「既定は 200 Hz」とあり食い違っています）。スパイク総数や MN9 の発火率が再実行の方で少し低いのはこのためです。`
+    : '';
+  $('repro-verdict').innerHTML = M.corr > 0.95
+    ? `発火率の相関は <b>${fmt(M.corr, 3)}</b> で、右上の散布図の点はほぼ一直線に並んでいます。どのニューロンがどれくらい反応するかは<b>元の結果をよく再現できています</b>。${stimNote}`
+    : `発火率の相関は <b>${fmt(M.corr, 3)}</b> でした。${M.orig_spikes > M.spikes * 1.15 ? '元の結果の方がスパイクが多く、同梱ファイルは現在の既定値（150 Hz）とは違う刺激強度で作られた可能性があります。' : ''}`;
+
+  $('method').innerHTML = [
+    `<code>git clone https://github.com/philshiu/Drosophila_brain_model</code>（配線データ込みで約370MB）`,
+    `Python 3.12 の仮想環境に Brian2 2.10.1・pandas・pyarrow・joblib を入れて、同梱の <code>example.ipynb</code> と同じ実験をスクリプトとして実行`,
+    `脳全体 ${fmt(M.neurons_total)} ニューロン、シナプス結合 ${fmt(M.synapse_rows)} 組（FlyWire v630）を読み込み、各ニューロンを LIF モデルとして配置`,
+    `右の唇弁の甘味受容ニューロン 21 個にだけ ${M.stim_hz} Hz のポアソン入力を与え、1秒間 × ${M.n_run} 試行シミュレーション（3並列、所要 ${fmt(M.wall_s)} 秒）`,
+    `全スパイクを記録し、ニューロンごとの平均発火率を計算。段数は興奮性シナプスをたどる最短経路で求めた`,
+  ].map((s) => `<li>${s}</li>`).join('');
+  $('foot-meta').textContent = `${M.backend} · ${M.n_run}試行 × ${M.t_run_ms} ms`;
+
+  // ---------- table ----------
+  $('table').innerHTML = '<thead><tr><th>ニューロン</th><th>段</th><th>発火率 (Hz)</th><th>± SD</th><th>元の結果 (Hz)</th><th>FlyWire ID</th></tr></thead><tbody>' +
+    D.neurons.slice(0, 60).map((n) => `<tr class="${n.name === 'MN9' ? 'hl' : ''}"><td>${n.name || '—'}</td><td>${n.hop ?? '—'}</td><td>${fmt(n.rate, 1)}</td><td>${fmt(n.std, 1)}</td><td>${fmt(n.orig, 1)}</td><td class="id">${n.id}</td></tr>`).join('') + '</tbody>';
+
+  // ---------- helpers ----------
+  function niceCeil(v) {
+    if (v <= 0) return 1;
+    const p = Math.pow(10, Math.floor(Math.log10(v))), m = v / p;
+    return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p;
+  }
+  function ticks(max, n) { const s = max / n; return Array.from({ length: n + 1 }, (_, i) => +(i * s).toFixed(6)); }
+  function fmtK(v) { return v >= 1000 ? (v / 1000) + 'k' : String(v); }
+  function roundTop(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h);
+    return `M${x},${y + h} V${y + r} Q${x},${y} ${x + r},${y} H${x + w - r} Q${x + w},${y} ${x + w},${y + r} V${y + h} Z`;
+  }
+
+  function drawAll() { drawRaster(); drawPsth(); drawBars(); drawHops(); drawScatter(); }
+  drawAll();
+  let rt;
+  window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(drawAll, 120); });
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawAll);
+})();
+</script>
+</body>
+</html>

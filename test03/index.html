@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ハエの脳と体のシミュレーター test03</title>
+<meta name="description" content="FlyWire コネクトームの脳（WebAssembly）が、flygym の NeuroMechFly の体を3Dで動かす。歩く・食べる・身づくろい・飛ぶ">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10);
+  --c-central: #2a78d6; --c-output: #eb6834; --c-input: #1baf7a;
+  --warn-bg: #fff3e0; --warn-ink: #8a4a00;
+  --btn: #f0efec; --btn-on: #0b0b0b; --btn-on-ink: #ffffff;
+  --stage: #d7dde2;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781; --grid: #2c2c2a; --axis: #383835;
+    --ring: rgba(255,255,255,0.10); --c-central: #3987e5; --c-output: #d95926; --c-input: #199e70;
+    --warn-bg: #3a2608; --warn-ink: #ffcf8a;
+    --btn: #262624; --btn-on: #ffffff; --btn-on-ink: #0b0b0b; --stage: #1d2126;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781; --grid: #2c2c2a; --axis: #383835;
+  --ring: rgba(255,255,255,0.10); --c-central: #3987e5; --c-output: #d95926; --c-input: #199e70;
+  --warn-bg: #3a2608; --warn-ink: #ffcf8a;
+  --btn: #262624; --btn-on: #ffffff; --btn-on-ink: #0b0b0b; --stage: #1d2126;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); padding-inline: 16px;
+  font: 14px/1.6 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif; }
+main { max-width: 1320px; margin: 0 auto; padding-block: 20px 60px; }
+h1 { font-size: 1.45rem; margin: 0; line-height: 1.3; }
+h2 { font-size: 0.95rem; margin: 0 0 8px; }
+h3 { font-size: 1.05rem; margin: 36px 0 8px; }
+a { color: var(--c-central); }
+.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px 20px; margin-bottom: 12px; }
+.sub { color: var(--ink-2); font-size: 0.88rem; margin: 4px 0 0; max-width: 62em; }
+.controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+button, select { font: inherit; font-size: 0.86rem; color: var(--ink); background: var(--btn); border: 1px solid var(--ring);
+  border-radius: 8px; padding: 5px 10px; cursor: pointer; }
+button:hover { border-color: var(--axis); }
+button.on { background: var(--btn-on); color: var(--btn-on-ink); border-color: var(--btn-on); }
+button:disabled { opacity: 0.45; cursor: default; }
+.layout { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(300px, 1fr); gap: 12px; align-items: start; }
+@media (max-width: 960px) { .layout { grid-template-columns: 1fr; } }
+.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 12px 14px; }
+.stack { display: grid; gap: 12px; min-width: 0; }
+.tools { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.tools button { padding: 4px 9px; }
+.tools .sep { width: 1px; background: var(--grid); margin: 2px 2px; }
+.stage { position: relative; border-radius: 8px; overflow: hidden; background: var(--stage); aspect-ratio: 16 / 10; touch-action: none; }
+@media (max-width: 600px) { .stage { aspect-ratio: 4 / 3.4; } }
+#view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+#minimap { position: absolute; right: 8px; top: 8px; width: 26%; max-width: 220px; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.25); cursor: crosshair; }
+.camsel { position: absolute; left: 8px; top: 8px; display: flex; gap: 4px; flex-wrap: wrap; }
+.camsel button { font-size: 0.76rem; padding: 3px 8px; background: rgba(252,252,251,0.85); color: #0b0b0b; border-color: rgba(0,0,0,0.12); }
+.camsel button.on { background: #0b0b0b; color: #fff; }
+.slowtag { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); background: rgba(11,11,11,0.72); color: #fff; font-size: 0.8rem;
+  padding: 3px 10px; border-radius: 12px; font-variant-numeric: tabular-nums; pointer-events: none; }
+.hud { position: absolute; left: 8px; bottom: 8px; background: rgba(11,11,11,0.62); color: #fff; font-size: 0.76rem; padding: 3px 8px; border-radius: 6px;
+  font-variant-numeric: tabular-nums; pointer-events: none; }
+.hint { color: var(--muted); font-size: 0.8rem; margin: 6px 0 0; min-height: 1.3em; }
+.status { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--ink-2); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.status b { color: var(--ink); font-weight: 600; }
+.badge { display: flex; align-items: center; gap: 12px; }
+.badge .em { font-size: 2rem; line-height: 1; }
+.badge .t { font-size: 1.25rem; font-weight: 650; }
+.badge .why { color: var(--ink-2); font-size: 0.8rem; }
+.rows { display: grid; gap: 3px; }
+.row { display: grid; grid-template-columns: 8.6em 1fr 3.6em; gap: 8px; align-items: center; font-size: 0.8rem; }
+.row .nm { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .val { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
+.bar { height: 8px; background: var(--grid); border-radius: 4px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; border-radius: 4px; background: var(--c-central); transition: width 0.12s linear; }
+.bar.in i { background: var(--c-input); }
+.bar.hot i { background: var(--c-output); }
+.sec { color: var(--muted); font-size: 0.72rem; margin: 8px 0 2px; letter-spacing: 0.04em; }
+#brainmap, #gait { width: 100%; display: block; }
+#gait { height: 84px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.76rem; color: var(--ink-2); margin-top: 6px; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+#spark { width: 100%; height: 70px; display: block; }
+.warn { display: none; background: var(--warn-bg); color: var(--warn-ink); border-radius: 8px; padding: 8px 10px; font-size: 0.84rem; margin-top: 8px; }
+.warn.show { display: block; }
+#log { font-size: 0.8rem; color: var(--ink-2); max-height: 170px; overflow-y: auto; font-variant-numeric: tabular-nums; }
+#log div { padding: 2px 0; border-bottom: 1px solid var(--grid); }
+#log b { color: var(--ink); font-weight: 600; }
+.overlay { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(420px, 90%); display: flex; flex-direction: column; align-items: center;
+  background: color-mix(in srgb, var(--surface) 92%, transparent); border-radius: 10px; gap: 6px; text-align: center; padding: 10px 14px; font-size: 0.86rem;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.18); }
+.overlay .pbar { width: 90%; height: 6px; background: var(--grid); border-radius: 3px; overflow: hidden; }
+.overlay .pbar i { display: block; height: 100%; width: 0; background: var(--c-central); }
+.overlay[hidden] { display: none; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 760px) { .cols { grid-template-columns: 1fr; } }
+.prose p, .prose li { max-width: 50em; color: var(--ink-2); font-size: 0.9rem; }
+.prose b { color: var(--ink); }
+.prose ul { padding-left: 1.2em; }
+code { background: var(--btn); border-radius: 4px; padding: 1px 5px; font-size: 0.86em; }
+label.chk { font-size: 0.8rem; color: var(--ink-2); display: inline-flex; gap: 5px; align-items: center; }
+.opts { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div>
+      <h1>ハエの脳と体のシミュレーター <span style="color:var(--muted);font-weight:500">test03</span></h1>
+      <p class="sub">本物のショウジョウバエの脳の配線図（FlyWire、13.9万ニューロン）を WebAssembly で動かし、
+        <a href="https://github.com/NeLy-EPFL/flygym">flygym</a> の NeuroMechFly（実物のハエのマイクロCTから作られた体、69部位・126関節）を3Dで動かします。
+        歩く・食べる・身づくろい、そして素早く飛ぶ。</p>
+    </div>
+    <div class="controls">
+      <button id="btn-play" disabled>⏸ 一時停止</button>
+      <button id="btn-reset" disabled>脳をリセット</button>
+      <select id="speed" aria-label="速度">
+        <option value="0.02">×1/50（羽ばたきが見える）</option><option value="0.1">×0.1</option><option value="0.25">×0.25</option>
+        <option value="0.5">×0.5</option><option value="1" selected>×1（実時間）</option><option value="2">×2</option>
+      </select>
+      <select id="scenario" aria-label="シナリオ">
+        <option value="best" selected>歩く・食べる・飛ぶ</option>
+        <option value="free">自由に（何もなし）</option>
+        <option value="feed">砂糖を食べる</option>
+        <option value="bitter">苦味を混ぜる</option>
+        <option value="dust">ほこりと身づくろい</option>
+        <option value="predator">天敵の影（逃避飛行）</option>
+        <option value="all">全部入り</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="stack">
+      <div class="card">
+        <div class="tools" id="tools">
+          <button data-tool="sugar" class="on">🍬 砂糖</button>
+          <button data-tool="bitter">🟤 苦味</button>
+          <button data-tool="mix">🍯 砂糖＋苦味</button>
+          <button data-tool="water">💧 水</button>
+          <button data-tool="dust">🌫 ほこり</button>
+          <button data-tool="shadow">⚫ 迫る影</button>
+          <button data-tool="touch">👆 頭に触れる</button>
+          <button data-tool="move">✋ ハエを移動</button>
+          <button data-tool="erase">🧽 消す</button>
+          <button data-tool="orbit">🎥 視点を回す</button>
+          <span class="sep"></span>
+          <button id="btn-fly" disabled>🪽 飛ばす</button>
+        </div>
+        <div class="stage" id="stage">
+          <canvas id="view" aria-label="3D アリーナ"></canvas>
+          <canvas id="minimap" aria-label="アリーナの見取り図"></canvas>
+          <div class="camsel" id="camsel">
+            <button data-cam="chase" class="on">追いかける</button>
+            <button data-cam="side">横から</button>
+            <button data-cam="top">全体</button>
+          </div>
+          <div class="slowtag" id="slowtag" hidden></div>
+          <div class="hud" id="hud"></div>
+          <div class="overlay" id="overlay">
+            <div id="load-msg">体（NeuroMechFly）を読み込んでいます…</div>
+            <div class="pbar"><i id="load-bar"></i></div>
+            <div style="color:var(--muted);font-size:0.76rem">脳の配線（約30MB）は初回のみ。WebAssembly で 138,639 個のニューロンを組み立てます</div>
+          </div>
+        </div>
+        <p class="hint" id="hint"></p>
+        <div class="status" id="status"></div>
+        <div class="opts">
+          <label class="chk"><input type="checkbox" id="auto-fly" checked>ときどき自分から飛ぶ</label>
+          <label class="chk"><input type="checkbox" id="auto-slow" checked>離陸の瞬間をスローで見せる</label>
+        </div>
+        <div class="warn" id="warn"></div>
+      </div>
+
+      <div class="cols">
+        <div class="card">
+          <h2>脚の動き — 足の接地パターン</h2>
+          <canvas id="gait" aria-label="6本の脚の接地パターン"></canvas>
+          <div class="legend"><span><i style="background:var(--ink);border-radius:2px"></i>接地（立脚）</span><span style="color:var(--muted)">空白 = 脚を振り出し中。直近 1.5 秒</span></div>
+        </div>
+        <div class="card">
+          <h2>全脳の発火（スパイク/秒）</h2>
+          <canvas id="spark" aria-label="全脳の発火率の推移"></canvas>
+          <div class="legend"><span><i style="background:var(--c-central)"></i>全ニューロンの合計（直近10秒）</span><span style="color:var(--muted)">点線 = 暴走の目安</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>できごと</h2>
+        <div id="log"></div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="card">
+        <div class="badge"><div class="em" id="beh-em">🪰</div><div><div class="t" id="beh-t">準備中</div><div class="why" id="beh-why"></div></div></div>
+      </div>
+      <div class="card">
+        <h2>入力 — 感覚ニューロンへの刺激</h2>
+        <div class="rows" id="in-rows"></div>
+      </div>
+      <div class="card">
+        <h2>出力 — 脳から体への信号</h2>
+        <div class="rows" id="out-rows"></div>
+      </div>
+      <div class="card">
+        <h2>脳の中（いま発火したニューロン）</h2>
+        <canvas id="brainmap" aria-label="発火したニューロンの位置"></canvas>
+        <div class="legend"><span><i style="background:var(--c-input)"></i>感覚（入力）</span><span><i style="background:var(--c-central)"></i>中間</span><span><i style="background:var(--c-output)"></i>下行性・運動（出力）</span><span style="color:var(--muted)">背面から見た図</span></div>
+        <div style="margin-top:8px"><button id="btn-smell" disabled>🧪 実験: 匂いを嗅がせる</button>
+          <label class="chk"><input type="checkbox" id="auto-reset" checked>暴走したら自動リセット</label></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="prose">
+    <h3>このシミュレーターの中身 — 何が本物で、何が手作りか</h3>
+    <div class="cols">
+      <div class="card">
+        <h2>本物（データ・モデルそのまま）</h2>
+        <ul>
+          <li><b>脳</b>: FlyWire v783 の 138,639 ニューロン・15,091,983 結合。Shiu et al. (2024, <i>Nature</i>) の LIF モデルを <a href="../flybrain/">flybrain.js</a>（WebAssembly）で動かしています。元の Brian2 実装とスパイク1本単位で一致。</li>
+          <li><b>体の形</b>: flygym（NeuroMechFly v2, EPFL）の体。実物のハエのマイクロCTから作られた 69 部位のメッシュと、MuJoCo モデルの関節構造（126 関節）をそのまま使っています。</li>
+          <li><b>脚の動き</b>: flygym の CPG（6本の脚の結合振動子、12 Hz、三脚歩容）と、実際に歩いたハエから記録した関節角の軌道（PreprogrammedSteps）。flygym の HybridTurningController と同じく、左右2本の「下行信号」で振幅と向きを変えます。</li>
+          <li><b>歩く速さ・曲がり方</b>: flygym の MuJoCo 物理シミュレーション（接地・粘着あり、Δt = 0.1 ms）で、下行信号 49 通りについて実際に歩かせて測った前進速度と旋回速度の表から引いています。左右 1.0 で秒速 14 mm。</li>
+          <li><b>脳の出力の値</b>: MN9（口吻）、DNg84/DNg35（身づくろい）、ジャイアントファイバー DNp01 などの発火率は、すべてこの脳が計算した結果です。苦味で MN9 が止まる、ほこりがあると砂糖があっても食べない、は配線から出てきます。</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>手作り（このページで決めたこと）</h2>
+        <ul>
+          <li><b>飛行</b>: flygym には飛行のモデルがありません。羽ばたき（毎秒 210 回、振幅 ±75°、8の字、前後で翅をひねる）、脚をたたむ姿勢、跳躍、サッカード（素早い方向転換）を挟む飛行経路、着地で脚を前に出す動作は、文献の値を参考に手で作ったものです。空気力学は計算していません。</li>
+          <li><b>何がハエを飛ばすか</b>: 迫る影 → LC4/LPLC2 → DNp01 が発火したら逃避ジャンプと飛行（ここは脳の出力）。「自分から飛ぶ」と「🪽 飛ばす」は脳の指令ではなく体の既定動作です。</li>
+          <li><b>歩くこと自体</b>: この脳は刺激がないと静かなので、歩行の下行信号（左右 1.0）と探索のゆらぎ・壁よけは体の既定動作です。脳は DNa02 の左右差で曲がる向き、MDN で後ずさり、そして「止まって食べる」「身づくろい」「逃げる」を決めます。</li>
+          <li><b>姿勢と閾値</b>: 身づくろいの前脚の軌道（逆運動学で頭に届かせる）、口吻の伸ばし方、色・毛・翅脈の描き方、MN9 &gt; 15 Hz などの閾値と刺激の強さは手で決めています。体の中の神経（VNC）と筋肉はありません。</li>
+          <li><b>嗅覚は使えません</b>: 匂い（ORN）を入れると、弱い刺激でも脳全体が暴走状態になります（Brian2 でも同じ）。🧪ボタンで確かめられます。</li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin-top:14px">前のバージョン: <a href="../test02/">test02</a>（2D）。
+      体: <a href="https://github.com/NeLy-EPFL/flygym">NeLy-EPFL/flygym</a>（NeuroMechFly v2, Apache-2.0。Wang-Chen et al. 2024, <i>Nature Methods</i>）。
+      脳のデータ: FlyWire Consortium / Schlegel et al. 2024（CC-BY 4.0）。モデル: <a href="https://github.com/philshiu/Drosophila_brain_model">philshiu/Drosophila_brain_model</a>（MIT）。
+      3D: <a href="https://threejs.org/">three.js</a>（MIT）。</p>
+  </div>
+</main>
+<script type="module" src="main.js?v=12"></script>
+</body>
+</html>
