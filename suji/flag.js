@@ -15,7 +15,7 @@
 // The skeleton's frame is z-up (as in MuJoCo and flygym), so this scene is too.
 import * as THREE from '../test03/vendor/three.module.min.js';
 import { loadFlyData, FlyBody, CPG, LocoMap, LEGS } from '../test03/body3d.js?v=6';
-import { HeadJerk } from './headjerk.js?v=2';
+import { HeadJerk } from './headjerk.js?v=4';
 
 const V = '?v=6';
 const NMF = new URL('../test03/nmf/', import.meta.url).href;
@@ -56,16 +56,24 @@ export class FlagFly {
     this.dL = 0; this.dR = 0; this.turn = 0;
     this.x = 0; this.y = 0; this.yaw = -0.5;
     this.head = 0;
-    this.jerk = new HeadJerk();    // puzzling over a wrong answer
+    this.jerk = new HeadJerk();    // puzzling over a wrong answer, or just weighing something up
+    this.jerkBlocks = false;       // only the puzzling holds up the quiz
+    this.cockT = rnd(3, 8);        // next idle cock of the head
     this.look = new THREE.Vector3(0.35, 0, 0.8);
     this.camAng = this.yaw + CAM_OFF;   // the camera keeps to one side of the fly
   }
 
   /** True while an answer is still playing out, so the page can wait for it. */
-  isBusy() { return this.phase !== 'idle' || this.jerk.active; }
+  isBusy() { return this.phase !== 'idle' || (this.jerkBlocks && this.jerk.active); }
 
   /** Told it was wrong: two quick cocks of the head, one way then the other, as if thinking. */
-  puzzle() { this.jerk.start(2); }
+  puzzle() { this.jerk.start(2); this.jerkBlocks = true; }
+  /** A single small cock of the head - a fly weighing something up. */
+  cock(scale = 0.6) {
+    if (this.jerk.active) return;
+    this.jerk.start(Math.random() < 0.3 ? 2 : 1, scale);
+    this.jerkBlocks = false;
+  }
 
   async load() {
     const [{ J, bin }, L] = await Promise.all([
@@ -180,6 +188,8 @@ export class FlagFly {
    * and it goes and eats. `sure` in 0..1: a low value raises it slowly and wobbles.
    */
   show(digit, sure = 1, correct = false, hold = false) {
+    // it cocks its head as it answers - more often when it is unsure
+    if (Math.random() < 0.45 + 0.4 * (1 - clamp(sure, 0, 1))) this.cock(0.45 + 0.3 * Math.random());
     this.hold = !!hold;            // keep it up until release()
     this.digit = digit;
     this.sure = clamp(sure, 0, 1);
@@ -418,6 +428,13 @@ export class FlagFly {
     jset('c_head-r_pedicel-yaw', -L * 0.2 * Math.sin(t * 6.4 + 0.8));
     jset('c_thorax-c_head-pitch', 0.18 * this.prob + (grooming ? 0.12 * Math.sin(this.groomPh * 0.5) : 0));
     // puzzling: the head snaps from one diagonal tilt to another (see headjerk.js)
+    // ...and, now and then, a small one of its own accord while it stands about
+    this.cockT -= dt;
+    if (this.cockT <= 0) {
+      this.cockT = rnd(4, 11);
+      const calm = this.act !== 'groom' && this.act !== 'rub' && this.act !== 'walk' && this.phase !== 'feeding';
+      if (calm) this.cock(0.3 + 0.35 * Math.random());
+    }
     const [pr, py, pp] = this.jerk.step(dt);
     jset('c_thorax-c_head-yaw', this.head + py);
     jset('c_thorax-c_head-roll', pr);

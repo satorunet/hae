@@ -1,6 +1,6 @@
 // What /suji/ and /hiragana/ share: the server's record, a copy of the
 // server's fly answering questions in the browser, and a drawing pad.
-import { FlagFly } from '../suji/flag.js?v=20';
+import { FlagFly } from '../suji/flag.js?v=22';
 import { RecordChart, COLORS } from './chart.js?v=3';
 import { normalise } from '../hiragana/kana.mjs?v=2';
 
