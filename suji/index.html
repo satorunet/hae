@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>蠅に数字を読ませる — キノコ体で手書き数字を判別</title>
+<meta name="description" content="蠅の脳のキノコ体に可塑性を入れて、1〜9の手書き数字を判別させる。ピクセルを匂いとして入力し、9つのドーパミン区画を数字に割り当てる。">
+<meta property="og:title" content="蠅に数字を読ませる">
+<meta property="og:description" content="キノコ体は疎なランダム符号の上の分類器。1〜9の手書き数字をどこまで覚えられるか。">
+<meta property="og:type" content="website">
+<style>
+  :root{
+    --bg:#0d1014; --panel:#151a20; --line:#252d36; --ink:#e6edf3; --dim:#8a97a6;
+    --ok:#59b7ff; --hot:#ff6b6b; --warm:#ffb454; --good:#54d98c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.65 system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+    padding-block:22px 40px;padding-left:16px;padding-right:16px;
+    max-width:760px;margin-inline:auto;-webkit-text-size-adjust:100%}
+  h1{font-size:1.32rem;margin:0 0 4px}
+  .sub{color:var(--dim);font-size:.82rem;margin:0 0 18px}
+  .sub code{color:#a8b6c5}
+  h2{font-size:.78rem;font-weight:600;letter-spacing:.08em;color:var(--dim);
+    text-transform:uppercase;margin:0 0 10px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:14px;margin-bottom:14px}
+  button{font:inherit;font-size:.88rem;color:var(--ink);background:#1b2229;
+    border:1px solid var(--line);border-radius:8px;padding:9px 13px;cursor:pointer;
+    -webkit-tap-highlight-color:transparent}
+  button:hover:not(:disabled){background:#222b34;border-color:#37424e}
+  button:disabled{opacity:.4;cursor:default}
+  button.go{border-color:#2c5f88}button.go:hover:not(:disabled){border-color:var(--ok)}
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  #status{font-size:.8rem;color:var(--dim);min-height:1.5em;margin:12px 0 0}
+  /* --- drawing --- */
+  .padrow{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+  #pad{touch-action:none;background:#07090c;border:1px solid var(--line);border-radius:8px;
+    width:220px;height:220px;cursor:crosshair;flex:0 0 auto}
+  .side{flex:1 1 180px;min-width:150px}
+  #prev{image-rendering:pixelated;width:96px;height:96px;background:#07090c;
+    border:1px solid var(--line);border-radius:6px;display:block}
+  .guess{font-size:3.4rem;line-height:1.1;font-weight:600;margin:6px 0 0}
+  .guess small{font-size:.8rem;font-weight:400;color:var(--dim);display:block;line-height:1.5}
+  .teach{display:grid;grid-template-columns:repeat(9,1fr);gap:5px;margin-top:10px}
+  .teach button{padding:8px 0;font-size:.95rem;text-align:center}
+  /* --- bars --- */
+  table{width:100%;border-collapse:collapse;font-size:.8rem}
+  td{padding:3px 0;vertical-align:middle}
+  td.nm{width:2.6em;color:#b9c6d4;font-variant-numeric:tabular-nums}
+  td.sub2{width:5.2em;color:#6b7887;font-size:.72rem}
+  td.num{width:3.6em;text-align:right;color:var(--dim);padding-left:6px;
+    font-variant-numeric:tabular-nums}
+  .bar{height:9px;border-radius:5px;background:#1f272f;position:relative;overflow:hidden}
+  .bar span{position:absolute;top:0;height:100%;border-radius:5px;background:#3b4a5a}
+  .bar span.win{background:var(--ok)}
+  #kc{display:block;width:100%;height:auto;border-radius:6px;background:#0a0d11}
+  #fly{display:block;width:100%;height:230px;border-radius:6px;
+    background:radial-gradient(120% 100% at 50% 20%,#1a212a,#0a0d11)}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.78rem;color:var(--dim);margin-top:10px}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
+  .note{font-size:.82rem;color:var(--dim);margin:8px 0 0}
+  .note b{color:#c3cfdb;font-weight:600}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.74rem;color:#9fb0c0;
+    overflow-x:auto;white-space:pre}
+  .scoreline{font-size:1.5rem;font-weight:600;margin:2px 0 0}
+  .scoreline small{font-size:.78rem;font-weight:400;color:var(--dim)}
+  footer{margin-top:26px;font-size:.74rem;color:#5d6a78;line-height:1.8}
+  footer a{color:#7f8fa1}
+</style>
+</head>
+<body>
+
+<h1>蠅に数字を読ませる</h1>
+<p class="sub">キノコ体は「疎なランダム符号の上に乗った分類器」なので、匂いの代わりにピクセルを入れれば数字も学べる。
+144 ピクセルを 685 本の嗅覚投射ニューロンに割り当て、9 つのドーパミン区画を 1〜9 に対応させた。
+FlyWire v783 ＋ Shiu et al. 2024 の LIF モデル、ブラウザ内の WebAssembly。</p>
+
+<div class="panel">
+  <h2>1. 教える</h2>
+  <div class="row">
+    <button class="go" data-act="train" data-per="3" disabled>MNIST で訓練（各 3 枚）</button>
+    <button data-act="train" data-per="9" disabled>さらに各 9 枚</button>
+    <button data-act="score" disabled>見たことのない数字で採点</button>
+    <button data-act="forget" disabled>忘れさせる</button>
+  </div>
+  <p class="note" id="trained">まだ何も教えていない。まず MNIST の手書き数字で訓練する
+  （1 枚ごとに 0.4 秒ぶんの脳をまわすので、各 3 枚で 20 秒ほどかかる）。</p>
+  <div id="scorebox" hidden>
+    <p class="scoreline"><span id="scorepct">–</span> <small id="scoresub"></small></p>
+    <div class="mono" id="conf"></div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>2. 書いて読ませる</h2>
+  <div class="padrow">
+    <canvas id="pad" width="220" height="220"></canvas>
+    <div class="side">
+      <canvas id="prev" width="12" height="12"></canvas>
+      <p class="guess" id="guess">–<small id="guesssub">指かマウスで数字を書いて「読ませる」</small></p>
+      <div class="row" style="margin-top:10px">
+        <button class="go" data-act="read" disabled>読ませる</button>
+        <button data-act="clear">消す</button>
+        <button data-act="sample" disabled>MNIST から 1 枚</button>
+      </div>
+      <p class="note" style="margin-top:12px">間違えたら正解を教えられる（1 枚でその場で学ぶ）:</p>
+      <div class="teach" id="teach"></div>
+    </div>
+  </div>
+  <p id="status">脳を読み込んでいます…</p>
+</div>
+
+<div class="panel">
+  <h2>蠅の答え</h2>
+  <canvas id="fly"></canvas>
+  <p class="note" id="flynote">蠅が前脚で旗を立てて答える。
+  自信があるときはぴたりと掲げて振り、迷っているときは旗がふらつく。
+  体は他のページと同じ NeuroMechFly の骨格なので、旗を持ち上げているのは本物の脚の逆運動学。</p>
+</div>
+
+<div class="panel">
+  <h2>9 つの区画の出力</h2>
+  <table id="bars"><tbody></tbody></table>
+  <p class="note">棒は<b>その区画がこの絵から受ける入力をどれだけ失ったか</b>（右へ伸びるほど強く弱まっている）。
+  ドーパミンが来たときに発火していたケニヨン細胞との結合だけが弱まるので、
+  いちばん弱まっている区画がその絵の正体、という読み方になる。数字の右は担当する MBON。</p>
+</div>
+
+<div class="panel">
+  <h2>ケニヨン細胞の符号</h2>
+  <canvas id="kc" width="720" height="260"></canvas>
+  <div class="legend">
+    <span><i style="background:#2a323b"></i>発火していない KC</span>
+    <span><i style="background:var(--ok)"></i>この絵で発火 <b id="pct">–</b></span>
+  </div>
+  <p class="note">5,177 個のケニヨン細胞を FlyWire の実際の細胞体位置で並べたもの。
+  絵ごとに 1 割ほどの違う細胞が発火し、この<b>疎な符号</b>の重なりが「似ている絵」の定義になる。</p>
+</div>
+
+<div class="panel">
+  <h2>正直な比較</h2>
+  <p class="note">同じ 144 ピクセルを普通のロジスティック回帰に入れると、こうなる（1〜9 の 9 クラス、偶然は 11.1%）:</p>
+  <div class="mono" id="cmp">教えた枚数   蠅（区画で読む）   KC符号＋最近傍   ロジスティック回帰
+各 1 枚             25.6%            30.4%             41.1%
+各 3 枚             35.9%            50.0%             54.6%
+各 12 枚            44.1%            57.0%             66.9%
+各 20 枚              –                –               73.5%
+各 60 枚              –                –               82.6%</div>
+  <p class="note">（1〜9 の 9 クラス、偶然は 11.1%。蠅の列はこのページと同じ設定を 270 枚の未知の数字で採点した値。
+  「KC符号＋最近傍」は、ケニヨン細胞の発火パターンだけを取り出して素朴な最近傍法にかけた場合。）</p>
+  <p class="note">読み取れることが 3 つある。</p>
+  <p class="note">
+  ① <b>確かに学習している</b>。各 12 枚で 44.1%、偶然の 11.1% の 4 倍。<br>
+  ② <b>OCR としては弱い</b>。同じピクセルを普通のロジスティック回帰に入れた方が全域で上で、
+  枚数が増えるほど差が開く（各 12 枚で 44.1% 対 66.9%）。<b>1 枚だけ教えた場合でも負けている</b>
+  （25.6% 対 41.1%）。学習則が「弱める」一方向しかなく、誤差を配る仕組みがないので、
+  区画ごとに「その数字で光った細胞の集合」を足し込んだ鋳型ができるだけ — 最近傍法に近く、それ以上にはならない。<br>
+  ③ <b>損失の三分の一は読み出し側で起きている</b>。ケニヨン細胞の符号そのものは各 12 枚で 57.0% まで支えるのに、
+  区画から読むと 44.1% に落ちる。MBON 1 種類はケニヨン細胞の一部にしか樹状突起を出していない
+  （このページの 9 区画で 2,560〜6,723 シナプス）ので、符号の一部が各区画には届かない。
+  脳の配線そのものが読み出しのボトルネックになっている、ということ。</p>
+</div>
+
+<div class="panel">
+  <h2>仕組み</h2>
+  <p class="note">
+  <b>入力</b>: 12×12 の各ピクセルに、685 本の嗅覚投射ニューロンを 4〜5 本ずつ割り当てる。
+  濃いピクセルほど担当ニューロンを強く（最大 220 Hz のポアソン入力で）叩く。
+  投射ニューロンからケニヨン細胞への配線はランダムなので、割り当ての順序に意味はない
+  （同じ絵が必ず同じ入り方をするよう固定してあるだけ）。
+  </p>
+  <p class="note">
+  <b>符号化</b>: 5,177 個のケニヨン細胞がその入力を受け、GABA 作動性の APL による
+  抑制フィードバックのもとで、1 割ほどだけが発火する。これがいわゆる fly hash で、
+  局所性鋭敏ハッシュとして機械学習側でも研究されている構造そのまま。
+  </p>
+  <p class="note">
+  <b>学習</b>: 「これは 3」と教えるとき、3 番の区画のドーパミンを上げて絵を見せる。
+  規則は <span class="mono" style="display:inline">gain −= η × trace[KC] × dopa[区画]</span> だけ。
+  そのとき発火していた細胞から、その区画の MBON への結合が弱まる。
+  </p>
+  <p class="note">
+  <b>読み出し</b>: 絵を見せ、発火した細胞から各区画への結合の平均の強さを見る。
+  いちばん弱っている区画が答え。区画ごとの基準値は<b>教えた絵だけ</b>から測っているので、
+  採点に使う未知の数字は判定に一切関与していない。
+  </p>
+  <p class="note">
+  <b>限界</b>: 全脳モデルは嗅覚入力を入れると中枢が暴走するため（入力を切っても約 47 万 spikes/s
+  が自走する）、ここでもキノコ体だけを動かして残りの脳は止めてある。
+  区画の数（＝同時に持てる記憶の数）も本物の蠅では十数個で、9 クラスはほぼ上限。
+  </p>
+</div>
+
+<footer>
+  数字: <a href="http://yann.lecun.com/exdb/mnist/">MNIST</a> を 12×12 に縮小 /
+  モデル: <a href="https://github.com/philshiu/Drosophila_brain_model">philshiu/Drosophila_brain_model</a>
+  (Shiu et al., <i>Nature</i> 2024) / コネクトーム: FlyWire v783
+  (<a href="https://codex.flywire.ai/">Dorkenwald, Matsliah et al.</a>, CC-BY 4.0) /
+  細胞型注釈: <a href="https://github.com/flyconnectome/flywire_annotations">Schlegel et al. 2024</a>, CC-BY 4.0.
+  可塑性はこの実装の追加で、元モデルには無い。<br>
+  <a href="/gakushu/">匂いを覚えさせる</a> · <a href="/">ハエたたき</a> ·
+  <a href="/kansatsu/">蠅観察</a> · <a href="/game/">うんち陣取り</a> · <a href="/meiro/">迷路</a>
+</footer>
+
+<script type="module">
+import { FlagFly } from './flag.js?v=4';
+const $ = (s) => document.querySelector(s);
+const worker = new Worker(new URL('./brain-worker.js?v=1', import.meta.url), { type: 'module' });
+
+// the fly that holds up the answer; it loads alongside the brain
+let fly = null;
+new FlagFly($('#fly')).load().then((f) => { fly = f; })
+  .catch((e) => { $('#flynote').textContent = '（3D の蠅を読み込めなかった: ' + e.message + '）'; });
+
+let meta = null, kcXY = null, busy = true;
+let lastZ = null, lastDigit = null, lastSlots = null;
+
+// ---------------------------------------------------------------- drawing pad
+const pad = $('#pad'), pctx = pad.getContext('2d');
+let drawing = false, strokes = [];
+function padSize() {
+  const w = Math.min(220, Math.max(150, pad.clientWidth || 220));
+  return w;
+}
+function redrawPad() {
+  const w = pad.width, h = pad.height;
+  pctx.fillStyle = '#07090c'; pctx.fillRect(0, 0, w, h);
+  pctx.strokeStyle = '#151a20'; pctx.lineWidth = 1;
+  for (let k = 1; k < 12; k++) {
+    const p = Math.round(k * w / 12) + .5;
+    pctx.beginPath(); pctx.moveTo(p, 0); pctx.lineTo(p, h); pctx.stroke();
+    pctx.beginPath(); pctx.moveTo(0, p); pctx.lineTo(w, p); pctx.stroke();
+  }
+  pctx.strokeStyle = '#e6edf3'; pctx.lineWidth = w / 11;
+  pctx.lineCap = 'round'; pctx.lineJoin = 'round';
+  for (const s of strokes) {
+    if (s.length < 2) {
+      if (s.length === 1) {
+        pctx.beginPath(); pctx.arc(s[0].x * w, s[0].y * h, pctx.lineWidth / 2, 0, 6.2832);
+        pctx.fillStyle = '#e6edf3'; pctx.fill();
+      }
+      continue;
+    }
+    pctx.beginPath();
+    s.forEach((p, i) => (i ? pctx.lineTo(p.x * w, p.y * h) : pctx.moveTo(p.x * w, p.y * h)));
+    pctx.stroke();
+  }
+  drawPreview();
+}
+const at = (e) => {
+  const r = pad.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+};
+pad.addEventListener('pointerdown', (e) => {
+  pad.setPointerCapture(e.pointerId); drawing = true;
+  strokes.push([at(e)]); redrawPad();
+});
+pad.addEventListener('pointermove', (e) => {
+  if (!drawing) return;
+  strokes[strokes.length - 1].push(at(e)); redrawPad();
+});
+pad.addEventListener('pointerup', () => { drawing = false; });
+pad.addEventListener('pointercancel', () => { drawing = false; });
+
+// The drawn glyph is centred on its ink and scaled to fill the box, the way
+// MNIST itself is normalised - otherwise a small corner scrawl is a different
+// picture from the same digit drawn large.
+function image12() {
+  const S = meta ? meta.size : 12, N = 96;
+  const big = document.createElement('canvas');
+  big.width = big.height = N;
+  const g = big.getContext('2d');
+  g.fillStyle = '#000'; g.fillRect(0, 0, N, N);
+  let x0 = 1, x1 = 0, y0 = 1, y1 = 0;
+  for (const s of strokes) for (const p of s) {
+    x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x);
+    y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
+  }
+  if (x1 < x0) return new Float32Array(S * S);
+  const w = Math.max(x1 - x0, 0.08), h = Math.max(y1 - y0, 0.08);
+  const k = 0.78 * N / Math.max(w, h);
+  const ox = N / 2 - (x0 + x1) / 2 * k, oy = N / 2 - (y0 + y1) / 2 * k;
+  g.strokeStyle = '#fff'; g.lineWidth = N * 0.085;
+  g.lineCap = 'round'; g.lineJoin = 'round'; g.fillStyle = '#fff';
+  for (const s of strokes) {
+    if (s.length === 1) {
+      g.beginPath(); g.arc(s[0].x * k + ox, s[0].y * k + oy, g.lineWidth / 2, 0, 6.2832); g.fill();
+      continue;
+    }
+    g.beginPath();
+    s.forEach((p, i) => (i ? g.lineTo(p.x * k + ox, p.y * k + oy) : g.moveTo(p.x * k + ox, p.y * k + oy)));
+    g.stroke();
+  }
+  // box-average N x N down to S x S
+  const src = g.getImageData(0, 0, N, N).data, out = new Float32Array(S * S);
+  const q = N / S;
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    let s = 0, n = 0;
+    for (let yy = Math.floor(y * q); yy < Math.floor((y + 1) * q); yy++)
+      for (let xx = Math.floor(x * q); xx < Math.floor((x + 1) * q); xx++) {
+        s += src[(yy * N + xx) * 4] / 255; n++;
+      }
+    out[y * S + x] = n ? s / n : 0;
+  }
+  // MNIST's own strokes at this size carry about 17.7 units of ink per picture;
+  // a finger-drawn stroke is far heavier, and an over-inked picture lights up
+  // three quarters of the Kenyon cells instead of a tenth, which is a different
+  // kind of input from anything the fly was taught. So match the ink.
+  let ink = 0;
+  for (const v of out) ink += v;
+  if (ink > 0.5) {
+    const k2 = Math.min(3, 17.7 / ink);
+    for (let i = 0; i < out.length; i++) out[i] = Math.min(1, out[i] * k2);
+  }
+  return out;
+}
+let previewImg = null;
+function drawPreview(img) {
+  const S = meta ? meta.size : 12;
+  previewImg = img || image12();
+  const c = $('#prev');
+  c.width = c.height = S;
+  const g = c.getContext('2d'), d = g.createImageData(S, S);
+  for (let i = 0; i < S * S; i++) {
+    const v = Math.round(255 * previewImg[i]);
+    d.data[4 * i] = d.data[4 * i + 1] = d.data[4 * i + 2] = v; d.data[4 * i + 3] = 255;
+  }
+  g.putImageData(d, 0, 0);
+}
+
+// ---------------------------------------------------------------- panels
+function drawBars() {
+  const tb = $('#bars tbody');
+  if (!meta) return;
+  if (!lastZ) { tb.innerHTML = '<tr><td class="note">まだ何も読ませていない。</td></tr>'; return; }
+  const lo = Math.min(...lastZ), hi = Math.max(...lastZ), span = (hi - lo) || 1;
+  tb.innerHTML = meta.readouts.map((r, c) => {
+    const depth = (hi - lastZ[c]) / span;                 // 1 = most depressed
+    return `<tr><td class="nm">${c + 1}</td>
+      <td class="sub2">${r.name}</td>
+      <td><div class="bar"><span class="${c + 1 === lastDigit ? 'win' : ''}"
+        style="left:0;width:${(100 * depth).toFixed(1)}%"></span></div></td>
+      <td class="num">${lastZ[c].toFixed(2)}</td></tr>`;
+  }).join('');
+}
+
+function drawKC() {
+  const c = $('#kc'), dpr = Math.min(2, devicePixelRatio || 1);
+  const w = c.clientWidth || 720, h = Math.round(w * 0.36);
+  c.width = w * dpr; c.height = h * dpr; c.style.height = h + 'px';
+  const x = c.getContext('2d');
+  x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  x.clearRect(0, 0, w, h);
+  if (!kcXY) return;
+  const n = kcXY.length / 2, pad2 = 10, r = Math.max(0.9, Math.min(2.2, w / 420));
+  const on = new Uint8Array(n);
+  if (lastSlots) for (const k of lastSlots) on[k] = 1;
+  const css = getComputedStyle(document.body).getPropertyValue('--ok').trim();
+  for (const pass of [0, 1]) {
+    x.fillStyle = pass ? css : '#2a323b';
+    x.beginPath();
+    for (let k = 0; k < n; k++) {
+      if (on[k] !== pass) continue;
+      const px = pad2 + kcXY[2 * k] * (w - 2 * pad2), py = pad2 + kcXY[2 * k + 1] * (h - 2 * pad2);
+      x.moveTo(px + r, py); x.arc(px, py, r, 0, 6.2832);
+    }
+    x.fill();
+  }
+  $('#pct').textContent = lastSlots ? (100 * lastSlots.length / n).toFixed(1) + '%' : '–';
+}
+
+// ---------------------------------------------------------------- controls
+const buttons = () => [...document.querySelectorAll('button[data-act]')];
+const enable = (on) => buttons().forEach((b) => {
+  if (b.dataset.act !== 'clear') b.disabled = !on;
+});
+$('#teach').innerHTML = Array.from({ length: 9 }, (_, i) =>
+  `<button data-act="teach" data-digit="${i + 1}" disabled>${i + 1}</button>`).join('');
+
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-act]');
+  if (!b) return;
+  const act = b.dataset.act;
+  if (act === 'clear') { strokes = []; redrawPad(); return; }
+  if (busy || b.disabled) return;
+  busy = true; enable(false);
+  if (act === 'train') {
+    $('#status').textContent = '教えています…';
+    worker.postMessage({ type: 'train', per: +b.dataset.per, from: meta.taughtRounds || 0 });
+    meta.taughtRounds = (meta.taughtRounds || 0) + (+b.dataset.per);
+  } else if (act === 'score') {
+    $('#status').textContent = '採点しています…';
+    worker.postMessage({ type: 'score', per: 10 });
+  } else if (act === 'forget') {
+    worker.postMessage({ type: 'forget' });
+    meta.taughtRounds = 0;
+  } else if (act === 'read') {
+    $('#status').textContent = '読んでいます…';
+    if (fly) fly.think();
+    worker.postMessage({ type: 'read', img: image12() });
+  } else if (act === 'teach') {
+    $('#status').textContent = `「${b.dataset.digit}」として覚えさせています…`;
+    worker.postMessage({ type: 'read', img: image12(), label: +b.dataset.digit });
+  } else if (act === 'sample') {
+    worker.postMessage({ type: 'sample', digit: 1 + Math.floor(Math.random() * 9),
+                         k: Math.floor(Math.random() * 20) });
+  }
+});
+
+// ---------------------------------------------------------------- worker
+worker.onmessage = async (e) => {
+  const m = e.data;
+  if (m.type === 'progress') {
+    $('#status').textContent = m.phase === 'wiring' ? 'キノコ体の配線を作っています…'
+      : m.total ? `脳を読み込んでいます… ${(100 * m.loaded / m.total).toFixed(0)}%`
+      : '脳を展開しています…';
+  } else if (m.type === 'busy') {
+    const what = { teaching: '教えています', calibrating: '基準を測っています', scoring: '採点しています' }[m.phase] || '計算中';
+    $('#status').textContent = `${what}… ${m.done}/${m.total}`;
+  } else if (m.type === 'ready') {
+    meta = m; meta.taughtRounds = 0;
+    kcXY = await kcPositions(m.kc);
+    drawBars(); drawKC(); redrawPad();
+    $('#status').textContent = `準備完了 — ${m.channels} チャンネル / 投射ニューロン ${m.pns} 本 / ` +
+      `ケニヨン細胞 ${m.kc.length.toLocaleString()} 個 / 読み出し ${m.readouts.map((r) => r.name).join(', ')}`;
+    busy = false; enable(true);
+  } else if (m.type === 'trained') {
+    $('#trained').textContent = `MNIST の手書き数字を各 ${Math.round(m.taught / 9)} 枚、合計 ${m.taught} 枚教えた。` +
+      ' 書いて読ませるか、見たことのない数字で採点する。';
+    busy = false; enable(true); $('#status').textContent = '教え終わった。';
+  } else if (m.type === 'forgotten') {
+    lastZ = null; lastDigit = null; lastSlots = null;
+    if (fly) fly.lower();
+    $('#trained').textContent = 'まっさらに戻した。';
+    $('#scorebox').hidden = true;
+    $('#guess').firstChild.textContent = '–';
+    $('#guesssub').textContent = '指かマウスで数字を書いて「読ませる」';
+    drawBars(); drawKC();
+    busy = false; enable(true); $('#status').textContent = '忘れた。';
+  } else if (m.type === 'scored') {
+    $('#scorebox').hidden = false;
+    $('#scorepct').textContent = `${(100 * m.ok / m.n).toFixed(1)}%`;
+    $('#scoresub').textContent = `正解 ${m.ok} / ${m.n}（偶然なら 11.1%）`;
+    const head = '     ' + Array.from({ length: 9 }, (_, i) => String(i + 1).padStart(3)).join('') + '   ← 蠅の答え';
+    const rows = [];
+    for (let d = 1; d <= 9; d++)
+      rows.push(String(d).padStart(4) + ' ' + m.conf[d].slice(1, 10).map((v) => String(v).padStart(3)).join(''));
+    $('#conf').textContent = head + '\n' + rows.join('\n') + '\n  ↑ 本当の数字';
+    busy = false; enable(true); $('#status').textContent = '採点終わり。';
+  } else if (m.type === 'readout') {
+    lastZ = m.z; lastDigit = m.digit; lastSlots = m.slots;
+    drawBars(); drawKC();
+    if (m.label != null) {
+      $('#guess').firstChild.textContent = String(m.label);
+      $('#guesssub').textContent = `「${m.label}」として覚えた（合計 ${m.taught} 枚）。基準を測り直すので、次の採点前にもう一度訓練するとよい。`;
+    } else if (!m.calibrated) {
+      $('#guess').firstChild.textContent = '–';
+      $('#guesssub').textContent = 'まだ何も教わっていないので答えられない。先に訓練する。';
+      if (fly) fly.lower();
+    } else {
+      $('#guess').firstChild.textContent = String(m.digit);
+      const sorted = [...m.z].map((v, i) => [v, i + 1]).sort((a, b) => a[0] - b[0]);
+      const margin = sorted[1][0] - sorted[0][0];
+      $('#guesssub').textContent = `2 番目の候補は ${sorted[1][1]}（差 ${margin.toFixed(2)}）`;
+      if (fly) fly.show(m.digit, Math.min(1, margin / 1.1));
+    }
+    busy = false; enable(true); $('#status').textContent = '読み終わった。';
+  } else if (m.type === 'sampled') {
+    strokes = [];
+    redrawPad();
+    drawPreview(m.img);
+    $('#guesssub').textContent = `MNIST の「${m.digit}」を入れた。「読ませる」を押す。`;
+    // the pad cannot show it as strokes, so read it straight from the preview
+    worker.postMessage({ type: 'read', img: previewImg });
+    busy = true; enable(false);
+  }
+};
+
+// FlyWire's representative point per neuron, frontal view
+async function kcPositions(kcIdx) {
+  const res = await fetch(new URL('../flybrain/data/pos783.bin.gz?v=1', import.meta.url));
+  const buf = await new Response(res.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+  const dv = new DataView(buf);
+  if (String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3)) !== 'FLYP') return null;
+  const n = dv.getUint32(4, true);
+  const xs = new Uint16Array(buf, 8, n), ys = new Uint16Array(buf, 8 + 2 * n, n);
+  const out = new Float32Array(2 * kcIdx.length);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const i of kcIdx) {
+    if (xs[i] < x0) x0 = xs[i]; if (xs[i] > x1) x1 = xs[i];
+    if (ys[i] < y0) y0 = ys[i]; if (ys[i] > y1) y1 = ys[i];
+  }
+  const sx = x1 - x0 || 1, sy = y1 - y0 || 1, aim = 0.36;
+  const k = Math.min(1 / sx, aim / sy), ox = (1 - sx * k) / 2, oy = (aim - sy * k) / 2;
+  kcIdx.forEach((i, j) => {
+    out[2 * j] = ox + (xs[i] - x0) * k;
+    out[2 * j + 1] = (oy + (ys[i] - y0) * k) / aim;
+  });
+  return out;
+}
+
+addEventListener('resize', () => { drawKC(); if (fly) fly.resize(); });
+redrawPad();
+worker.postMessage({ type: 'init' });
+</script>
+</body>
+</html>

@@ -65,13 +65,16 @@ brain.forget();                                // every gain back to 1
 | `setPlasticity({ pre, groups, ... })` | nominate the synapses and the dopamine compartments |
 | `setPlasticityParams({ eta, tauTrace, tauDopa, gainMin, tauForget, everyMs })` | retune without rebuilding |
 | `dopamine(group, level)` | set a compartment's dopamine directly |
-| `gain(group)` / `gainFrom(pre)` / `gainOf(pre, post)` | read the learned weights |
+| `gain(group)` / `gainFrom(pre)` / `gainByGroup(pre)` / `gainOf(pre, post)` | read the learned weights |
 | `forget()` | back to naive |
 
 `data/mb783.json` (Kenyon cells, MBONs, DANs and olfactory projection neurons,
 from `tools/build_mb.py`) and `data/mbcompart783.json` (which DANs gate which
 MBON, from `tools/build_compartments.mjs`) are what `test/learn.mjs` and
-[/gakushu/](../gakushu/) feed it. `node test/learn.mjs` reproduces aversive and
+[/gakushu/](../gakushu/) feed it. `gainByGroup(pre)` reads the same weights the
+other way round - per compartment, over one presynaptic population - which is
+what [/suji/](../suji/) uses to ask which of nine digit compartments recognises
+a picture. `node test/learn.mjs` reproduces aversive and
 appetitive conditioning: pair one odour with dopamine and its MBON response
 falls over a few trials while a second odour's does not, and only the
 compartments the paired DANs end in are touched.

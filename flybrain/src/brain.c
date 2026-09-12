@@ -368,6 +368,34 @@ EXPORT(fb_gain_mean) double fb_gain_mean(i32 c) {
     return n ? s / (double)n : 0.0;
 }
 
+/* Read the learned weights of one presynaptic population, per group: reset,
+ * add the cells one by one, then read the sums and counts. This is how a
+ * postsynaptic cell sees that population - the drive it has left. */
+static double *probe_sum;
+static u32 *probe_n;
+
+EXPORT(fb_gain_probe_reset) i32 fb_gain_probe_reset(void) {
+    if (!probe_sum) {
+        probe_sum = (double *)fb_alloc((n_group + 1) * 8);
+        probe_n = (u32 *)fb_alloc((n_group + 1) * 4);
+        if (!probe_sum || !probe_n) return -1;
+    }
+    for (u32 c = 0; c < n_group; c++) { probe_sum[c] = 0.0; probe_n[c] = 0; }
+    return 0;
+}
+
+EXPORT(fb_gain_probe_add) void fb_gain_probe_add(u32 j) {
+    if (!rowgain[j]) return;
+    const u32 b = indptr[j], e = indptr[j + 1];
+    for (u32 q = b; q < e; q++) {
+        const i32 c = rowgrp[j][q - b];
+        if (c >= 0) { probe_sum[c] += (double)rowgain[j][q - b]; probe_n[c]++; }
+    }
+}
+
+EXPORT(fb_ptr_probe_sum) u32 fb_ptr_probe_sum(void) { return (u32)probe_sum; }
+EXPORT(fb_ptr_probe_n)   u32 fb_ptr_probe_n(void)   { return (u32)probe_n; }
+
 /* mean gain of one presynaptic cell's plastic synapses, or -1 if it has none */
 EXPORT(fb_gain_pre) double fb_gain_pre(u32 j) {
     if (!rowgain[j]) return -1.0;

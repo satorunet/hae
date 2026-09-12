@@ -282,6 +282,24 @@ export class FlyBrain {
     return n ? s / n : 1;
   }
 
+  /**
+   * Mean gain, per group, of the plastic synapses leaving `pre` - what each
+   * compartment has left of that population's drive. Returns a Float64Array
+   * over the groups (1 where the group has no synapse from `pre`).
+   */
+  gainByGroup(pre, { byIndex = false } = {}) {
+    const x = this._x;
+    if (x.fb_gain_probe_reset() !== 0) throw new Error('flybrain: out of memory');
+    if (byIndex) for (const j of pre) x.fb_gain_probe_add(j);
+    else for (const j of this._idx(pre, false)) x.fb_gain_probe_add(j);
+    const g = this._plastic ? this._plastic.groups.length : 0;
+    const sum = new Float64Array(x.memory.buffer, x.fb_ptr_probe_sum(), g);
+    const n = new Uint32Array(x.memory.buffer, x.fb_ptr_probe_n(), g);
+    const out = new Float64Array(g);
+    for (let c = 0; c < g; c++) out[c] = n[c] ? sum[c] / n[c] : 1;
+    return out;
+  }
+
   /** The gain of one synapse, or -1 if it is not plastic. */
   gainOf(pre, post, { byIndex = false } = {}) {
     const [j] = this._idx(pre, byIndex), [i] = this._idx(post, byIndex);
