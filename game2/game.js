@@ -38,7 +38,9 @@ const BEST_KEY = 'hae-tataki-best-60';
 const MATCH_TIME = SOLO60 ? 60 : 45;   // seconds of swatting
 const COUNT_IN = 3.2;            // the 3–2–1 before it
 const SWAT_HALF = 6.5;           // half the width of the head: everything under that square is caught at once
-const SWAT_FLEX = 2.2;           // how far the mesh can bend down around what it is resting on
+const SWAT_FLEX = 0.8;           // how far below the mesh a fly can still be and be caught
+const ALARM_R = 26;              // a swing is noticed this far off
+const ALARM_HOLD = 0.9;          // and they stay turned towards it for this long
 const SWAT_FALL = 0.17;          // seconds from the raised hand to the impact
 const SWAT_COOL = 0.5;           // and this long before that player can swing again
 const PIN_T = 0.34;              // it is held down and struggling for this long before anything is decided
@@ -268,6 +270,7 @@ class Fly {
     const dir = Math.hypot(vx, vy) > 30 ? Math.atan2(vy, vx) : rnd(-Math.PI, Math.PI);
     this.held = null;
     this.takeoff('escape', dir, 'body');
+    if (!this.flight) { this.setState('walk'); return; }      // too broken to fly
     Object.assign(this.flight, { launched: true, u: clamp(Math.hypot(vx, vy), 120, 260), T: rnd(0.6, 1.6) });
     this.state = 'flight'; this.stateT = 0; this.vz = 80; this.wingOpen = 1; this.flap = 1; this.yaw = dir;
   }
@@ -304,7 +307,13 @@ class Fly {
     const avoid = this.avoid;
     if (this.crowded && base > 0) base *= 0.4;
     const dna02 = clamp((this.drive.DNa02R - this.drive.DNa02L) * 0.006, -0.5, 0.5);
-    const turn = clamp(this.om + pull + back + avoid + dna02, -0.8, 0.8);
+    // something came down nearby: pull up short and swing round to face it
+    let look = 0;
+    if (world.t - (this.alarmT ?? -9) < ALARM_HOLD) {
+      look = clamp(wrap(Math.atan2(this.alarmY - this.y, this.alarmX - this.x) - this.yaw), -1, 1) * 0.85;
+      base *= 0.45;
+    }
+    const turn = clamp(this.om + pull + back + avoid + dna02 + look, -0.9, 0.9);
     this.dL = base * (1 + turn); this.dR = base * (1 - turn);
     if (this.state === 'land') { this.dL = this.dR = 0; if (this.stateT > 0.35) this.setState('walk'); }
     this.cpg.step(dt, this.dL, this.dR);
@@ -776,9 +785,9 @@ function stepPoops(dt) {
 // whoever sits near a spot takes off and comes back
 function scatterFrom(x, y, R) {
   for (const f of flies) {
-    if (f.airborne || f.state === 'land' || Math.hypot(f.x - x, f.y - y) > R + 3) continue;
+    if (f.airborne || f.hurt || f.state === 'land' || Math.hypot(f.x - x, f.y - y) > R + 3) continue;
     f.takeoff('voluntary', Math.atan2(f.y - y, f.x - x) + rnd(-0.8, 0.8), 'body');
-    f.flight.T = rnd(0.7, 1.8);
+    if (f.flight) f.flight.T = rnd(0.7, 1.8);        // it may not have got off the ground
   }
 }
 // "ボトッ": a heavy, wet drop -- a low body whose pitch falls fast, then a short squelch
@@ -921,6 +930,11 @@ const groundPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
 
 function startGame() {
   clearPoops(); clearCorpses(); clearSwats(); clearHitPops();
+  for (let i = flies.length - 1; i >= 0; i--) {              // the wounded from the last round are cleared away
+    const f = flies[i];
+    if (!f.hurt) continue;
+    scene.remove(f.body.root, f.body.skin); flies.splice(i, 1); net.byId.delete(f.id);
+  }
   Object.assign(game, { phase: 'count', left: MATCH_TIME, countIn: COUNT_IN, kills: [0, 0], lastPip: 99 });
   cool[0] = cool[1] = 0;
   wanted = N_FLIES;                      // fixed at 30 until the match starts
@@ -955,6 +969,10 @@ function say(msg) {
 }
 // a tap on the ground puts the current player's dropping there
 function tapGround(cx, cy) {
+  // the ray meets the flat ground, which is well past a fly standing on top of a dropping —
+  // so if the tap was on a fly, that fly's own spot is what was meant
+  const f = flyAt(cx, cy);
+  if (f && !f.leaving) return tapWorld(f.x, f.y);
   const q = groundTarget(cx, cy);
   if (q) tapWorld(q.x, q.y);
 }
@@ -1022,27 +1040,52 @@ const swatGeo = (() => {
 })();
 const swatMat = PLAYERS.map((p) => new THREE.MeshStandardMaterial({ color: p.hex, roughness: 0.62, metalness: 0.05 }));
 const canSwat = (by) => game.phase === 'play' && world.t >= cool[by];
-// a dropping holds the head up: the highest point under the square is where the swing stops
-function restHeight(x, y, rot) {
+// Where the head comes to rest. Balancing it on the single highest point under the square left it
+// hanging in the air over everything else, so it lies across the surface instead: a plane is fitted
+// to the ground under it, tilted to match, then lifted just clear of the tallest lump.
+function restPlane(x, y, rot) {
   const c = Math.cos(rot), sn = Math.sin(rot);
-  let h = 0;
+  const S = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], r = [0, 0, 0], pts = [];
   for (let i = -3; i <= 3; i++) for (let j = -3; j <= 3; j++) {
     const lx = i / 3 * SWAT_HALF, ly = j / 3 * SWAT_HALF;
-    const v = groundZ(x + lx * c - ly * sn, y + lx * sn + ly * c);
-    if (v > h) h = v;
+    const h = groundZ(x + lx * c - ly * sn, y + lx * sn + ly * c);
+    pts.push([lx, ly, h]);
+    const row = [1, lx, ly];
+    for (let a = 0; a < 3; a++) { r[a] += row[a] * h; for (let b = 0; b < 3; b++) S[a][b] += row[a] * row[b]; }
   }
-  return h;
+  S[1][1] += 1e-3; S[2][2] += 1e-3;
+  const sol = solve3(S, r);
+  const bx = clamp(sol[1], -0.45, 0.45), by = clamp(sol[2], -0.45, 0.45);
+  let lift = 0;
+  for (const [lx, ly, h] of pts) lift = Math.max(lift, h - (sol[0] + bx * lx + by * ly));
+  return { z: sol[0] + lift, bx, by };
 }
+// how high the mesh is directly over a point in its own frame
+const meshOver = (s, lx, ly) => s.z + s.bx * lx + s.by * ly;
 // `quiet` = this hand is only being drawn (a guest's own optimistic swing, or the opponent's echo)
 function swat(x, y, by, quiet) {
   if (!canSwat(by)) return false;
   cool[by] = world.t + SWAT_COOL;
   const m = new THREE.Mesh(swatGeo, swatMat[by]);
   const rot = rnd(0, TAU);
-  m.rotation.z = rot;                              // it never comes down at quite the same angle
   m.castShadow = true; m.renderOrder = 3;
   m.position.set(x, y, SWAT_H); scene.add(m);
-  swats.push({ x, y, by, rot, rest: restHeight(x, y, rot), t: 0, z: SWAT_H, vz: 0, mesh: m, hit: false, done: false, pinned: [], quiet: !!quiet });
+  // everything nearby looks up at once; the jumpiest ones are already going
+  for (const f of flies) {
+    if (f.airborne || f.leaving || f.state === 'held' || f.hurt) continue;
+    const d = Math.hypot(f.x - x, f.y - y);
+    if (d > ALARM_R) continue;
+    f.alarmT = world.t; f.alarmX = x; f.alarmY = y;
+    if (d < 15 && !f.startle && Math.random() < 0.22) {
+      f.startle = { at: world.t + rnd(0.02, 0.1), dir: Math.atan2(f.y - y, f.x - x) + rnd(-0.5, 0.5) };
+    }
+  }
+  const pl = restPlane(x, y, rot);
+  _qa.setFromAxisAngle(AZ, rot);
+  _qb.setFromAxisAngle(AY, -Math.atan(pl.bx));
+  _qc.setFromAxisAngle(AX, Math.atan(pl.by));
+  m.quaternion.copy(_qa).multiply(_qb).multiply(_qc);          // lying along the slope it landed on
+  swats.push({ x, y, by, rot, rest: pl.z, bx: pl.bx, by2: pl.by, t: 0, z: SWAT_H, vz: 0, mesh: m, hit: false, done: false, pinned: [], quiet: !!quiet });
   if (net.host) net.send({ t: 'swat', x, y, by });        // so the other screen sees it swing, not just land
   return true;
 }
@@ -1082,11 +1125,12 @@ function sweepSwat(s) {
   const c = Math.cos(-s.rot), sn = Math.sin(-s.rot);
   for (const f of flies) {
     if (!f.airborne || f.state === 'held' || f.leaving) continue;
-    if (f.z > s.z + 2.5 || f.z < s.z - 3.5) continue;         // not in the plane the mesh is passing through
     const dx = f.x - s.x, dy = f.y - s.y;
     if (Math.hypot(dx, dy) > SWAT_HALF * 1.5 + f.s) continue;
-    const lx = dx * c - dy * sn, ly = dx * sn + dy * c, m = SWAT_HALF + f.s * 0.45;
+    const lx = dx * c - dy * sn, ly = dx * sn + dy * c, m = SWAT_HALF + f.s * 0.25;
     if (Math.abs(lx) > m || Math.abs(ly) > m) continue;
+    const over = meshOver(s, lx, ly);                         // the mesh right above this fly
+    if (f.z > over + 2.0 || f.z < over - 3.0) continue;        // not in the sheet it is sweeping through
     pinDown(f, s);                                            // swatted down and carried to the ground
   }
 }
@@ -1098,13 +1142,14 @@ function impactSwat(s) {
     const f = flies[i];
     const dx = f.x - s.x, dy = f.y - s.y;
     if (Math.hypot(dx, dy) > SWAT_HALF * 1.5 + f.s) continue;                 // cheap reject before the real test
-    const lx = dx * c - dy * sn, ly = dx * sn + dy * c, m = SWAT_HALF + f.s * 0.45;
+    const lx = dx * c - dy * sn, ly = dx * sn + dy * c, m = SWAT_HALF + f.s * 0.25;
     if (Math.abs(lx) > m || Math.abs(ly) > m) continue;
     d.under++;
     if (f.airborne || f.leaving || f.state === 'held') { d.gone++; continue; }
     // the head rests on the tallest thing under it; the mesh only bends so far, so a fly further
     // down the slope (or on the flat beside a tall dropping) is out of its reach
-    if (groundZ(f.x, f.y) + 1.1 * f.s + SWAT_FLEX < s.rest) { d.outOfReach++; continue; }
+    // it is only caught if the mesh actually came down onto it, not merely somewhere overhead
+    if (groundZ(f.x, f.y) + 1.05 * f.s + SWAT_FLEX < s.rest + s.bx * lx + s.by2 * ly) { d.outOfReach++; continue; }
     // a fly that happens to be over one of the holes can dart up through the mesh — unless it is already broken
     if (!f.hurt && Math.random() < clamp((0.04 + 0.3 * gapAt(lx, ly) ** 2) * (1.5 - 0.55 * f.s), 0, 0.5)) {
       d.slipped++; slipAway(f, s); continue;
@@ -1853,5 +1898,5 @@ resize();
     $('load').textContent = '読み込みに失敗しました: ' + (err && err.message || err);
   }
 })();
-window.__game = { world, flies, cam, stats, renderer, audio, game, poops, net, swats, corpses, startGame, swat, tapWorld, endGame, beginPlay, gapAt, cripple, project: (f) => new THREE.Vector3(f.x, f.y, f.z).project(camera).toArray() };
+window.__game = { world, flies, cam, stats, renderer, audio, game, poops, net, swats, corpses, startGame, swat, tapWorld, endGame, beginPlay, gapAt, cripple, groundAt: groundZ, project: (f) => new THREE.Vector3(f.x, f.y, f.z).project(camera).toArray() };
 requestAnimationFrame(frame);
