@@ -87,6 +87,21 @@ button:active { transform: scale(0.985); }
 }
 .turn b { color: var(--ink); }
 
+/* チャット（オンライン対戦で、自分が操作しない間だけ） */
+.chat { flex: 0 0 auto; padding: 4px 8px 6px; }
+.chat[hidden] { display: none; }
+.chat-log { display: flex; flex-direction: column; gap: 3px; min-height: 0; max-height: 84px; overflow: hidden; justify-content: flex-end; padding: 2px 2px 5px; }
+.chat-log .cm { max-width: 78%; padding: 3px 10px; border-radius: 12px; font-size: 0.84rem; line-height: 1.35; word-break: break-word; animation: cmIn 0.2s ease-out; }
+.chat-log .cm.me { align-self: flex-end; background: #2b2b29; color: var(--ink); border-bottom-right-radius: 4px; }
+.chat-log .cm.them { align-self: flex-start; color: #0d0d0d; border-bottom-left-radius: 4px; }
+.chat-log .cm.old { opacity: 0.55; }
+@keyframes cmIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.stamps { display: flex; gap: 5px; margin-bottom: 5px; }
+.stamps button { flex: 1; min-height: 34px; padding: 0; font-size: 1.1rem; border-radius: 10px; }
+.chat-row { display: flex; gap: 6px; }
+#chat-text { flex: 1; min-width: 0; height: 40px; font: inherit; font-size: 16px; color: var(--ink); background: #161615; border: 1px solid var(--ring); border-radius: 12px; padding: 0 12px; }
+#chat-send { flex: 0 0 auto; height: 40px; padding: 0 14px; font-weight: 700; background: var(--accent); color: #191918; border: 0; }
+
 /* 結果 */
 .result { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(8,8,8,0.6); padding: 16px; }
 .result[hidden] { display: none; }
@@ -163,6 +178,20 @@ button:active { transform: scale(0.985); }
     </div>
   </div>
   <div class="turn" id="turn"></div>
+  <div class="chat" id="chat" hidden>
+    <div class="chat-log" id="chat-log" aria-live="polite"></div>
+    <form class="chat-in" id="chat-form" autocomplete="off">
+      <div class="stamps" id="stamps">
+        <button type="button" data-s="👍">👍</button><button type="button" data-s="😂">😂</button>
+        <button type="button" data-s="😱">😱</button><button type="button" data-s="💩">💩</button>
+        <button type="button" data-s="🪰">🪰</button><button type="button" data-s="🙏">🙏</button>
+      </div>
+      <div class="chat-row">
+        <input id="chat-text" maxlength="40" placeholder="あいてにひとこと" enterkeyhint="send" aria-label="チャット">
+        <button type="submit" id="chat-send">送信</button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <div class="lobby" id="lobby">
@@ -202,7 +231,7 @@ button:active { transform: scale(0.985); }
   </div>
 </div>
 
-<script type="module" src="game.js?v=18"></script>
+<script type="module" src="game.js?v=19"></script>
 <script>
 document.getElementById('goto').addEventListener('change', (e) => { if (e.target.value) location.href = e.target.value; });
 </script>

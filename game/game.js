@@ -993,10 +993,61 @@ function hud() {
     ck.textContent = `のこり ${Math.ceil(Math.max(0, game.left))}`;
   } else if (game.phase === 'result') { t.textContent = '終了'; ck.textContent = '終了'; }
   else { t.textContent = ''; ck.textContent = ''; }
+  chatVisible();
   $('p0').classList.toggle('active', game.phase === 'place' && game.turn === 0);
   $('p1').classList.toggle('active', game.phase === 'place' && game.turn === 1);
   popCount();
 }
+// ------------------------------------------------------------------ chat with the opponent
+// Online only, and only while you are not the one acting: the opponent's turn, the 30 seconds of
+// watching, and the result. Messages ride the same relay as the game (the server forwards anything
+// it does not understand to the other player). A message that arrives while the chat is hidden
+// shows up over the field instead.
+const CHAT_MAX = 40;
+function chatVisible() {
+  const on = net.on && (game.phase === 'watch' || game.phase === 'result' || (game.phase === 'place' && game.turn !== net.idx));
+  const el = $('chat');
+  if (el.hidden === !on) return;
+  el.hidden = !on;
+  if (!on && document.activeElement === $('chat-text')) $('chat-text').blur();
+  resize();
+}
+function chatAdd(text, mine) {
+  const log = $('chat-log'), el = document.createElement('div');
+  el.className = 'cm ' + (mine ? 'me' : 'them');
+  if (!mine) el.style.background = PLAYERS[1 - Math.max(0, net.idx)].css;
+  el.textContent = text;
+  log.appendChild(el);
+  while (log.children.length > 4) log.firstChild.remove();
+  [...log.children].forEach((c, i, all) => c.classList.toggle('old', i < all.length - 2));
+  if (!mine && $('chat').hidden) say(`あいて: ${text}`);
+  if (!mine) chatPing();
+}
+function chatClean(s) { return String(s ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, CHAT_MAX); }
+let chatLastSend = 0;
+function chatSend(text) {
+  const s = chatClean(text);
+  if (!s || !net.on) return;
+  const now = performance.now();
+  if (now - chatLastSend < 700) return;           // no flooding
+  chatLastSend = now;
+  net.send({ t: 'chat', s });
+  chatAdd(s, true);
+}
+function chatPing() {                              // a soft two-note blip for an incoming message
+  const ctx = audio.ctx; if (!ctx) return;
+  const t = ctx.currentTime;
+  for (const [f, at] of [[880, 0], [1175, 0.08]]) {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t + at); g.gain.exponentialRampToValueAtTime(0.12, t + at + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + at + 0.18);
+    o.connect(g); g.connect(ctx.destination); o.start(t + at); o.stop(t + at + 0.2);
+  }
+}
+$('chat-form').addEventListener('submit', (e) => { e.preventDefault(); chatSend($('chat-text').value); $('chat-text').value = ''; });
+$('stamps').addEventListener('click', (e) => { const b = e.target.closest('button[data-s]'); if (b) chatSend(b.dataset.s); });
+function chatReset() { $('chat-log').textContent = ''; $('chat-text').value = ''; $('chat').hidden = true; }
+
 // flies arriving and leaving, as a +1 / −2 that floats up out of the number
 let lastCount = [0, 0], lastPhase = '';
 function popCount() {
@@ -1197,6 +1248,7 @@ $('btn-back').addEventListener('click', () => backToLobby(''));
 function walkover() {
   game.phase = 'result'; game.left = 0; wanted = N_FLIES;
   net.walkover = true; net.on = false;
+  chatReset();
   if (net.ws) { try { net.ws.close(); } catch { /* already gone */ } net.ws = null; }
   $('r-title').textContent = '不戦勝';
   $('r-title').style.color = PLAYERS[net.idx] ? PLAYERS[net.idx].css : '';
@@ -1211,6 +1263,7 @@ function walkover() {
 function backToLobby(msg) {
   if (net.ws) { try { net.ws.close(); } catch { /* already gone */ } net.ws = null; }
   net.on = false; net.host = false; net.idx = -1; net.byId.clear();
+  chatReset();
   $('result').hidden = true;
   $('lobby-wait').hidden = true; $('lobby-menu').hidden = false; $('lobby').hidden = false;
   $('app').classList.remove('playing');
@@ -1311,6 +1364,9 @@ function netMessage(m) {
     if (net.host && game.phase === 'place' && game.turn === 1) placeAt(m.x, m.y);
   } else if (m.t === 'again') {
     if (net.host) startGame();
+  } else if (m.t === 'chat') {
+    const s = chatClean(m.s);
+    if (s) chatAdd(s, false);
   }
 }
 function netStatus(text, spin) {
