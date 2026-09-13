@@ -26,6 +26,7 @@ const STATE = process.env.JUKU_STATE ? new URL(`file://${process.env.JUKU_STATE}
 const SAVE_EVERY_MS = 3 * 60e3;
 const KEEP_BRAINS = 3;
 const WINDOW = 500;                 // the running score is over the last this many
+const MAX_PRACTICE = +process.env.JUKU_MAX || 100000;   // then it stops practising (the record stays up)
 const log = (...a) => console.log(new Date().toISOString(), course, ...a);
 
 await mkdir(STATE, { recursive: true });
@@ -125,6 +126,7 @@ async function save() {
     ...levelInfo(st), levelUp: LEVEL_UP,
     lastTest: st.lastTest, history: thin(st.history),
     brain: name, gains: gains.length,
+    finished: st.finished || null, maxPractice: MAX_PRACTICE,
     readouts: R.groups.map((g) => ({ name: g.name, cells: g.cells.length, inputs: g.inputs })),
   };
   await writeFile(new URL('trainer.json.tmp', STATE), JSON.stringify(st));
@@ -167,6 +169,23 @@ let stopping = false;
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { stopping = true; });
 
 while (!stopping) {
+  if (st.practised >= MAX_PRACTICE) {
+    if (!st.finished) {                     // one last test, then rest
+      const test = sitTest();
+      const run = st.recent.length ? st.recent.reduce((a, b) => a + b, 0) / st.recent.length : 0;
+      const point = { t: Date.now(), n: st.practised, test: +test.score.toFixed(4), run: +run.toFixed(4), level: st.level };
+      st.history.push(point);
+      st.lastTest = { ...point, size: test.n, perLetter: test.perLetter.map((v) => (v == null ? null : +v.toFixed(2))) };
+      await appendFile(new URL('log.jsonl', STATE), JSON.stringify({ ...st.lastTest, finished: true }) + '\n');
+      st.finished = Date.now();
+      await save();
+      await writeFile(new URL('live.json', STATE), JSON.stringify({ t: Date.now(), practised: st.practised, level: st.level,
+        running: run, window: st.recent.length, feed, finished: st.finished }));
+      log(`finished at ${st.practised}: test=${(100 * test.score).toFixed(1)}%`);
+    }
+    await new Promise((res) => setTimeout(res, 5000));
+    continue;
+  }
   const q = nextPicture(st);
   const r = R.practise(q.img, q.truth, allowedNow(st));
   st.practised++;

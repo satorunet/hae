@@ -31,7 +31,7 @@ const CAM_OFF = 1.05;              // the camera sits this far round from the fl
 // leg-tip targets in the thorax frame, the same ones the other pages use
 const POSE_TARGETS = {
   groom: { f: [0.62, 0.28, 0.16] },                             // start of a head sweep
-  rub: { f: [0.74, 0.02, -0.46] },                              // tarsi rubbed together
+  rub: { f: [0.9, 0.02, -0.68] },                               // tarsi rubbed together, in front of and below the head
   tuck: { f: [0.5, 0.28, -0.62], m: [-0.5, 0.42, -0.9], h: [-1.45, 0.3, -0.82] },   // folded up in flight (test03)
 };
 const WINGBEAT = 210;              // Hz, as in test03
@@ -447,6 +447,54 @@ export class FlagFly {
     return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u];
   }
 
+  // Points along a leg in the thorax frame: the start of each segment from the
+  // femur on, and the tip (the same forward kinematics as FlyBody.legTip).
+  legPoints(leg) {
+    const chain = this.body.chains[leg], pts = [], p = [0, 0, 0], q = [1, 0, 0, 0];
+    chain.forEach((b, k) => {
+      rotAdd(q, b.pos, p);
+      if (k >= 1) pts.push(p.slice());
+      mulIn(q, b.quat);
+      for (const j of b.joints) mulAxisIn(q, j.axis, j.q);
+    });
+    rotAdd(q, chain[chain.length - 1].tip, p);
+    pts.push(p.slice());
+    return pts;                     // [femur, tibia, tarsus1..5, tip]
+  }
+  /**
+   * No leg through the body: the head (with its eyes and folded proboscis), the
+   * thorax and the abdomen are ellipsoids, and wherever a leg's segments dip
+   * inside one, the tip is pushed out along the surface normal and the leg is
+   * solved again. Front legs are checked against the head from the tibia on;
+   * every leg against thorax and abdomen from the first tarsal segment on
+   * (the upper leg is attached right there).
+   */
+  keepOutOfBody(leg, i, front) {
+    for (let iter = 0; iter < 6; iter++) {
+      const pts = this.legPoints(leg);
+      let push = null, deepest = 0;
+      for (let k = 1; k < pts.length; k++) {
+        const a = pts[k - 1], b = pts[k];
+        for (const u of [0.25, 0.5, 0.75, 1]) {
+          const x = a[0] + (b[0] - a[0]) * u, y = a[1] + (b[1] - a[1]) * u, z = a[2] + (b[2] - a[2]) * u;
+          for (const E of BODY_SHAPES) {
+            if (E.head ? !front || k < 2 : k < 3) continue;
+            const dx = (x - E.c[0]) / E.r[0], dy = (y - E.c[1]) / E.r[1], dz = (z - E.c[2]) / E.r[2];
+            const d = Math.hypot(dx, dy, dz);
+            if (d >= 1 || 1 - d <= deepest) continue;
+            deepest = 1 - d;
+            const s = 1 / Math.max(d, 1e-3) - 1;             // out to the surface, plus a little
+            push = [dx * E.r[0] * (s + 0.12), dy * E.r[1] * (s + 0.12), dz * E.r[2] * (s + 0.12)];
+          }
+        }
+      }
+      if (!push) return;
+      const tip = this.body.legTip(leg);
+      const tgt = [tip[0] + push[0], tip[1] + push[1], tip[2] + push[2]];
+      this.body.setLeg(leg, this.body.ik(leg, tgt, this.body.getLeg(leg), this.neutral[i], 6, 0.005));
+    }
+  }
+
   // wing strokes, the same kinematics as test03, with blurred copies while beating
   poseWings() {
     const body = this.body, A = 1.3, phi0 = -0.12, alpha = 0.7, beta = 0.8, fk = this.flap;
@@ -557,8 +605,18 @@ export class FlagFly {
     if (!answering && !this.fl && this.actT <= 0) this.chooseAct();
 
     const W = this.w;
-    const grooming = this.act === 'groom' && !answering;
-    const rubbing = this.act === 'rub' && !answering;
+    // waiting over its answer it fidgets: rubs its tarsi together, wipes its head, stands still
+    if (this.phase === 'waiting') {
+      this.waitT = (this.waitT ?? 0) - dt;
+      if (this.waitT <= 0) {
+        const r = Math.random();
+        this.waitAct = this.waitAct !== 'stand' && r < 0.3 ? 'stand' : r < 0.65 ? 'rub' : 'groom';
+        this.waitT = this.waitAct === 'stand' ? rnd(0.5, 1.0) : rnd(1.2, 2.2);
+      }
+    } else this.waitT = 0;
+    const waitingAs = this.phase === 'waiting' ? this.waitAct : null;
+    const grooming = (this.act === 'groom' && !answering) || waitingAs === 'groom';
+    const rubbing = (this.act === 'rub' && !answering) || waitingAs === 'rub';
     W.groom = approach(W.groom, grooming ? 1 : 0, dt, 0.12);
     W.rub = approach(W.rub, rubbing ? 1 : 0, dt, 0.1);
     // the mouthparts: hard at work on the food, in bursts while "feeding" idly,
@@ -615,13 +673,14 @@ export class FlagFly {
           sgn * lerp(0.28 + 0.1 * Math.cos(ph), 0.04 + 0.05 * Math.sin(ph), m),
           lerp(0.16 + 0.22 * Math.sin(ph), -0.24 + 0.05 * Math.cos(ph), m),
         ];
+        outsideHead(tgt);                            // sweep over the eye, not through it
         const sol = this.body.ik(leg, tgt, this.ikGroom[leg] || this.poses[leg].groom, this.neutral[i], 3, 0.02);
         this.ikGroom[leg] = sol; mix(sol, W.groom);
       } else this.ikGroom[leg] = null;
       if (front && W.rub > 0.001) {
         // the two tarsi cross and slide over each other in front of the head
         const sgn = leg[0] === 'l' ? 1 : -1, ph = this.rubPh + (sgn > 0 ? 0 : Math.PI);
-        const tgt = [0.74 + 0.06 * Math.sin(ph), sgn * (0.015 + 0.07 * Math.sin(ph)), -0.46 + 0.05 * Math.cos(ph)];
+        const tgt = [0.9 + 0.06 * Math.sin(ph), sgn * (0.02 + 0.07 * Math.sin(ph)), -0.68 + 0.05 * Math.cos(ph)];
         const sol = this.body.ik(leg, tgt, this.ikRub[leg] || this.poses[leg].rub, this.neutral[i], 3, 0.02);
         this.ikRub[leg] = sol; mix(sol, W.rub);
       } else this.ikRub[leg] = null;
@@ -643,6 +702,7 @@ export class FlagFly {
         this.penIk = this.body.ik(leg, tgt, this.penIk || this.body.getLeg(leg), this.neutral[i], 6, 0.015);
         this.body.setLeg(leg, this.penIk);
       } else if (leg === 'lf') this.penIk = null;
+      if (front || this.tuckW > 0.01) this.keepOutOfBody(leg, i, front);
       if (front) {
         const tip = this.body.legTip(leg);
         for (let j = 0; j < 3; j++) mid[j] += tip[j] / 2;
@@ -811,6 +871,43 @@ function groundTexture() {
   t.repeat.set(10, 10);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
+}
+
+// the body as ellipsoids in the thorax frame, measured from the NeuroMechFly meshes
+const BODY_SHAPES = [
+  { c: [0.27, 0, 0.08], r: [0.36, 0.56, 0.5], head: true },        // head and eyes
+  { c: [0.3, 0, -0.38], r: [0.32, 0.26, 0.3], head: true },        // rostrum and haustellum, folded
+  { c: [-0.58, 0, 0], r: [0.86, 0.47, 0.86] },                     // thorax
+  { c: [-1.55, 0, -0.18], r: [0.8, 0.5, 0.5] },                    // abdomen
+];
+// move a point out of the head shapes, onto a slightly larger copy of them
+function outsideHead(p, grow = 1.25) {
+  for (const E of BODY_SHAPES) {
+    if (!E.head) continue;
+    const dx = (p[0] - E.c[0]) / E.r[0], dy = (p[1] - E.c[1]) / E.r[1], dz = (p[2] - E.c[2]) / E.r[2];
+    const d = Math.hypot(dx, dy, dz);
+    if (d >= grow || d < 1e-6) continue;
+    const k = grow / d;
+    p[0] = E.c[0] + dx * k * E.r[0]; p[1] = E.c[1] + dy * k * E.r[1]; p[2] = E.c[2] + dz * k * E.r[2];
+  }
+  return p;
+}
+// quaternion helpers ([w, x, y, z], as in body3d.js)
+function mulAxisIn(q, ax, ang) {
+  const s = Math.sin(ang / 2), bw = Math.cos(ang / 2), bx = ax[0] * s, by = ax[1] * s, bz = ax[2] * s;
+  const aw = q[0], a1 = q[1], a2 = q[2], a3 = q[3];
+  q[0] = aw * bw - a1 * bx - a2 * by - a3 * bz; q[1] = aw * bx + a1 * bw + a2 * bz - a3 * by;
+  q[2] = aw * by - a1 * bz + a2 * bw + a3 * bx; q[3] = aw * bz + a1 * by - a2 * bx + a3 * bw;
+}
+function mulIn(q, b) {
+  const aw = q[0], a1 = q[1], a2 = q[2], a3 = q[3];
+  q[0] = aw * b[0] - a1 * b[1] - a2 * b[2] - a3 * b[3]; q[1] = aw * b[1] + a1 * b[0] + a2 * b[3] - a3 * b[2];
+  q[2] = aw * b[2] - a1 * b[3] + a2 * b[0] + a3 * b[1]; q[3] = aw * b[3] + a1 * b[2] - a2 * b[1] + a3 * b[0];
+}
+function rotAdd(q, v, p) {
+  const w = q[0], x = q[1], y = q[2], z = q[3], a = v[0], b = v[1], c = v[2];
+  const ix = w * a + y * c - z * b, iy = w * b + z * a - x * c, iz = w * c + x * b - y * a, iw = -x * a - y * b - z * c;
+  p[0] += ix * w + iw * -x + iy * -z - iz * -y; p[1] += iy * w + iw * -y + iz * -x - ix * -z; p[2] += iz * w + iw * -z + ix * -y - iy * -x;
 }
 
 const AY = new THREE.Vector3(0, 1, 0), AZ = new THREE.Vector3(0, 0, 1);

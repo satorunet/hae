@@ -1,9 +1,10 @@
 // What /suji/ and /hiragana/ share: the server's record, a copy of the
 // server's fly answering questions in the browser, and writing your own letter
 // in the question box for it to read.
-import { FlagFly } from '../suji/flag.js?v=33';
+import { FlagFly } from '../suji/flag.js?v=34';
 import { RecordChart, COLORS } from './chart.js?v=3';
 import { normalise } from '../hiragana/kana.mjs?v=2';
+import { Sound } from './sound.js?v=1';
 
 const $ = (s) => document.querySelector(s);
 const pct = (v, d = 0) => (v == null ? '–' : `${(100 * v).toFixed(d)}%`);
@@ -28,6 +29,16 @@ export function runPage(o) {
   new FlagFly($('#fly')).load().then((f) => { fly = f; window.__fly = f; })
     .catch((e) => { $('#flynote').textContent = '（3D の蠅を読み込めなかった: ' + e.message + '）'; });
   const chart = new RecordChart($('#chart'), $('#charttip'), { levelName: o.levelName });
+  // sound: ○ / × / giving up, and the wings while it flies
+  const sound = new Sound();
+  const soundBtn = $('#soundbtn');
+  const drawSoundBtn = () => { if (soundBtn) { soundBtn.textContent = sound.on ? '🔊' : '🔇'; soundBtn.setAttribute('aria-pressed', String(sound.on)); } };
+  soundBtn?.addEventListener('click', () => { sound.setOn(!sound.on); drawSoundBtn(); });
+  drawSoundBtn();
+  (function hum() {
+    requestAnimationFrame(hum);
+    if (fly) sound.buzz(fly.flap || 0, (fly.alt || 0) * 3);
+  })();
 
   const unlocked = () => (status ? o.rows.slice(0, status.level || 1).join('').length : letters.length);
 
@@ -88,8 +99,9 @@ export function runPage(o) {
         $('#running').textContent = pct(L.running, 1);
         $('#runsub').textContent = L.window ? `直近 ${L.window} 問` : 'レベルが上がったばかり';
         const age = (Date.now() - L.t) / 1000;
-        $('#livestate').textContent = age < 30 ? '● 練習中' : `停止中（${Math.round(age / 60)} 分前が最後）`;
-        $('#livestate').className = age < 30 ? 'live on' : 'live';
+        $('#livestate').textContent = L.finished ? `練習終了（${Math.round((status?.maxPractice || 100000) / 1e4)} 万枚）`
+          : age < 30 ? '● 練習中' : `停止中（${Math.round(age / 60)} 分前が最後）`;
+        $('#livestate').className = age < 30 && !L.finished ? 'live on' : 'live';
         $('#feed').innerHTML = L.feed.slice().reverse().map(([t, a]) => t === a
           ? `<span class="fc ok" title="正解">${esc(labels[t])}</span>`
           : `<span class="fc no" title="${esc(labels[t])} を ${esc(labels[a])} と読んだ">${esc(labels[t])}<small>${esc(labels[a])}</small></span>`).join('');
@@ -125,6 +137,7 @@ export function runPage(o) {
     }
     auto = on;
     $('#autobtn').textContent = on ? '自動停止' : '自動出題';
+    const badge = $('#autobadge'); if (badge) badge.hidden = !on;
     if (!on && quizTimer) { clearTimeout(quizTimer); quizTimer = null; }
     if (on && !busy) nextQuestion(300);
   }
@@ -384,6 +397,7 @@ export function runPage(o) {
   const hstat = { n: 0, first: 0, top3: 0 };
   function showJudge(on) {
     $('#judge').hidden = !on;
+    document.body.classList.toggle('judging', on);
     if (on) {
       $('#judgeok').disabled = false; $('#judgeno').disabled = false;
       $('#judgeq').textContent = handK === 0 ? '蠅の読みは合ってる？'
@@ -416,6 +430,7 @@ export function runPage(o) {
     if (!handCands.length || $('#judgeok').disabled) return;
     $('#judgeok').disabled = true; $('#judgeno').disabled = true;
     const v = $('#verdict'); v.textContent = ok ? '○' : '×'; v.className = 'verdict ' + (ok ? 'ok' : 'no');
+    if (ok) sound.ok(); else if (handK + 1 < handCands.length) sound.ng();
     if (ok) {
       hstat.n++; hstat.top3++; if (handK === 0) hstat.first++;
       drawHandTally();
@@ -434,7 +449,10 @@ export function runPage(o) {
     hstat.n++;
     drawHandTally();
     if (fly) fly.release(false);
-    finishHand(`× 第 ${handCands.length} 候補まで全部はずれ（${handCands.map((c) => labels[c]).join('・')}）。出題に戻る。`);
+    // three tries and none right: it gives up
+    v.textContent = '諦めた'; v.className = 'verdict no giveup';
+    sound.giveUp();
+    finishHand(`蠅は諦めた — 第 ${handCands.length} 候補まで全部はずれ（${handCands.map((c) => labels[c]).join('・')}）。出題に戻る。`);
     backToQuiz();
   }
   // once marked, straight back to the quiz - after the flag is down (and the food eaten)
@@ -610,6 +628,7 @@ export function runPage(o) {
       const mark = () => {
         asked++; if (ok) right++; hist.push(ok); drawTally();
         const v = $('#verdict'); v.textContent = ok ? '○' : '×'; v.className = 'verdict ' + (ok ? 'ok' : 'no');
+        if (ok) sound.ok(); else sound.ng();
         $('#status').textContent = (ok ? `「${labels[m.answer]}」— 正解。餌が出る。` : `「${labels[m.answer]}」— 不正解、本当は「${labels[m.truth]}」。`) +
           `次の候補は「${labels[m.second]}」`;
       };

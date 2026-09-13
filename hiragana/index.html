@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>ひらがなを読む蠅 — サーバで休まず練習するキノコ体</title>
+<title>ひらがな読み書き学習したハエ</title>
 <meta name="description" content="蠅の脳のキノコ体に、ひらがな 46 文字を一段ずつ覚えさせる。サーバで休まず練習し、見たことのないフォントで合格すると次の段に進む。">
-<meta property="og:title" content="ひらがなを読む蠅">
+<meta property="og:title" content="ひらがな読み書き学習したハエ">
 <meta property="og:description" content="FlyWire のキノコ体が、サーバで休まずひらがなを練習している。いまのレベルと正答率の記録。">
 <meta property="og:type" content="website">
 <style>
@@ -63,6 +63,16 @@
   .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.76rem;color:var(--dim);margin-top:8px}
   /* quiz */
   .flywrap{position:relative}
+  .soundbtn{position:absolute;left:10px;bottom:10px;width:38px;height:38px;padding:0;border-radius:50%;font-size:1rem;
+    background:rgba(13,16,20,.72);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+  .qbox{position:relative}
+  .autobadge{position:absolute;top:-11px;left:50%;transform:translateX(-50%);z-index:4;white-space:nowrap;padding:2px 9px 2px 20px;
+    border-radius:11px;font-size:.68rem;font-weight:600;color:#bff0d2;background:#122a1c;border:1px solid #2f6b49;pointer-events:none}
+  .autobadge::before{content:"";position:absolute;left:8px;top:50%;width:7px;height:7px;margin-top:-3.5px;border-radius:50%;
+    background:#54d98c;animation:autopulse 1.4s ease-in-out infinite}
+  @keyframes autopulse{50%{opacity:.25}}
+  .autobadge[hidden]{display:none}
+  .verdict.giveup{font-size:1.6rem;white-space:nowrap}
   .loadbar{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);width:min(78%,420px);padding:8px 12px 10px;
     background:rgba(9,12,16,.82);border:1px solid #2b3642;border-radius:9px;font-size:.74rem;color:#c3cfdb;transition:opacity .5s}
   .loadbar[hidden]{display:none}
@@ -192,9 +202,11 @@
     #status{margin-top:8px}
     #flynote{display:none}
     /* marking your own writing: big buttons, always in reach above the tabs */
-    .judge{position:fixed;left:10px;right:10px;bottom:calc(70px + env(safe-area-inset-bottom));z-index:45;
-      justify-content:center;padding:10px;border-radius:14px;box-shadow:0 8px 28px rgba(0,0,0,.55);background:#131a21}
-    .judge .jq{width:100%;text-align:center;margin:0 0 2px}
+    .judge{position:fixed;left:0;right:0;bottom:0;z-index:70;margin:0;justify-content:center;
+      padding:8px 10px calc(8px + env(safe-area-inset-bottom));border-radius:0;border:0;border-top:1px solid #2f3b47;
+      box-shadow:0 -6px 24px rgba(0,0,0,.45);background:rgba(15,20,26,.98)}
+    body.judging .tabbar{visibility:hidden}
+    .judge .jq{width:100%;text-align:center;margin:0}
     .judge button{flex:1;min-height:52px;font-size:1.15rem;border-radius:12px}
     /* the brain window: compact */
     .bwin{width:min(50vw,210px);font-size:.6rem}
@@ -222,7 +234,7 @@
 </head>
 <body data-tab="play">
 
-<h1>ひらがなを読む蠅</h1>
+<h1>ひらがな読み書き学習したハエ</h1>
 <div class="panel quiz" data-tab="play">
   <h2><span>出題 → このページの蠅が答える</span></h2>
   <div class="flywrap">
@@ -233,6 +245,7 @@
   </div>
   <div class="quizrow">
     <div class="qbox">
+      <div id="autobadge" class="autobadge">自動出題中</div>
       <div class="qdraw"><button class="xclear" hidden aria-label="消す">×</button><canvas id="q" width="16" height="16"></canvas><canvas id="qpad" width="264" height="264" title="ここに字を書くと蠅が読む"></canvas></div>
       <div class="qlab">問題 <b id="qtruth">–</b> <span id="qsrc" hidden></span></div>
       <div class="qhint">✍ この枠にも書ける</div>
@@ -364,7 +377,7 @@
 </nav>
 
 <script type="module">
-import { runPage } from '../juku/page.js?v=36';
+import { runPage } from '../juku/page.js?v=40';
 import { ROWS, INK } from './kana.mjs?v=2';
 const ROWNAME = ['あ', 'か', 'さ', 'た', 'な', 'は', 'ま', 'や', 'ら', 'わ'];
 runPage({
