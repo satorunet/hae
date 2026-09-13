@@ -3,21 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<title>ハエたたき — 時間内に多く潰した方の勝ち</title>
-<meta name="description" content="スマホで1対1のハエたたき。45秒で多く潰した方の勝ち。蠅は本物のショウジョウバエの体（NeuroMechFly）で、迫る手に気づくと逃げます。">
+<title>ハエたたき — 1分で何匹たたけるか</title>
+<meta name="description" content="1分で何匹たたけるか。蠅は本物のショウジョウバエの体（NeuroMechFly）で動き、迫る手に気づくと逃げます。結果はそのままシェアできます。">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A6%9F%3C/text%3E%3C/svg%3E">
 <meta name="theme-color" content="#0d0d0d">
 <meta name="mobile-web-app-capable" content="yes">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="hae.satoru.net">
 <meta property="og:locale" content="ja_JP">
-<meta property="og:url" content="https://hae.satoru.net/game2/">
-<meta property="og:title" content="ハエたたき — 時間内に多く潰した方の勝ち">
-<meta property="og:description" content="スマホで1対1。45秒で多く潰した方の勝ち。">
+<meta property="og:url" content="https://hae.satoru.net/tataki/">
+<link rel="canonical" href="https://hae.satoru.net/tataki/">
+<meta property="og:title" content="ハエたたき — 1分で何匹たたけるか">
+<meta property="og:description" content="1分で何匹たたけるか。気づかれると逃げられます。">
 <meta property="og:image" content="https://hae.satoru.net/og.jpg">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="ハエたたき — 時間内に多く潰した方の勝ち">
-<meta name="twitter:description" content="スマホで1対1。45秒で多く潰した方の勝ち。">
+<meta name="twitter:title" content="ハエたたき — 1分で何匹たたけるか">
+<meta name="twitter:description" content="1分で何匹たたけるか。気づかれると逃げられます。">
 <meta name="twitter:image" content="https://hae.satoru.net/og.jpg">
 <style>
 /* 画面はスマホ縦持ちが基準。1画面に収めきり、ページ自体はスクロールしない */
@@ -103,6 +104,10 @@ body.solo .p1 { display: none; }
 #r-score { font-size: 1.05rem; margin: 10px 0 18px; font-variant-numeric: tabular-nums; }
 #r-score .vs { color: var(--muted); }
 #again { width: 100%; min-height: 52px; font-size: 1.02rem; font-weight: 700; background: var(--accent); color: #191918; border: 0; }
+#share { width: 100%; min-height: 50px; margin-top: 9px; font-size: 0.98rem; font-weight: 700; }
+#share[hidden] { display: none; }
+#r-score .best { font-size: 0.86rem; color: var(--ink-2); }
+#r-title { font-size: 2.6rem; }
 
 /* ---------------------------------------------------------------- ロビー（最初の画面） */
 .lobby { position: fixed; inset: 0; z-index: 10; background: #0b0b0b; overflow-y: auto; -webkit-overflow-scrolling: touch; }
@@ -167,6 +172,7 @@ body.solo .p1 { display: none; }
         <div id="r-title"></div>
         <div id="r-score"></div>
         <button id="again">もう一度</button>
+        <button id="share" hidden>結果をシェア</button>
       </div>
     </div>
   </div>
@@ -180,37 +186,30 @@ body.solo .p1 { display: none; }
       <div class="warn-t">⚠️ 閲覧注意</div>
       <p>うんちと、それに群がる蠅が大きく映ります。音が出ます。</p>
 
-      <h2>ハエたたき 1対1</h2>
-      <p>タップで叩く。<b>45秒</b>で多く潰した方の勝ち。<br>気づかれると逃げられます。</p>
+      <h2>ハエたたき</h2>
+      <p>蠅をタップして叩く。<b>1分</b>で何匹たためるか。<br>気づかれると逃げられます。</p>
 
       <div class="acts">
-        <button class="primary" id="btn-online">だれかと対戦する</button>
-        <button id="btn-local">ひとりで練習</button>
+        <button class="primary" id="btn-local">はじめる</button>
       </div>
       <select class="goto" id="goto" aria-label="ほかのページへ">
         <option value="">ほかのページ…</option>
-        <option value="/">ひらがな読み書き学習したハエ</option><option value="/tataki/">ハエたたき（1分）</option>
+        <option value="/">ひらがな読み書き学習したハエ</option>
+        <option value="/game2/">ハエたたき 1対1</option>
         <option value="/game/">うんち陣取り</option>
         <option value="/meiro/">迷路実験</option>
         <option value="/kansatsu/">蠅観察（脳を見る）</option>
+        <option value="/gakushu/">匂いを覚えさせる（学習）</option>
+        <option value="/suji/">数字を読む蠅</option>
       </select>
       <p class="note">体: <a href="https://github.com/NeLy-EPFL/flygym">flygym</a> NeuroMechFly ・ 脳: <a href="https://flywire.ai/">FlyWire</a> / <a href="https://github.com/philshiu/Drosophila_brain_model">Shiu et al.</a></p>
-    </div>
-
-    <div id="lobby-wait" hidden>
-      <div class="hero">🦟</div>
-      <h2>あいてを探しています</h2>
-      <p>いま遊んでいる人と自動でつながります。相手が見つかると<b>赤（先手）</b>か<b>青（後手）</b>が決まって、すぐ始まります。</p>
-      <div id="lobby-status"></div>
-      <div class="acts">
-        <button class="sub" id="btn-back">やめる</button>
-      </div>
     </div>
 
   </div>
 </div>
 
-<script type="module" src="game.js?v=33"></script>
+<script>window.__HAE_MODE = 'solo60';</script>
+<script type="module" src="/game2/game.js?v=33"></script>
 <script>
 document.getElementById('goto').addEventListener('change', (e) => { if (e.target.value) location.href = e.target.value; });
 </script>

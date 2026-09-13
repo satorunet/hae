@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>みんなの手書き — 蠅はどう読んだか</title>
+<meta name="description" content="読み書きする蠅のページで、みんなが書いた字と、蠅がそれをどう読んだかの記録。">
+<style>
+  :root{--bg:#0d1014;--panel:#151a20;--line:#252d36;--ink:#e6edf3;--dim:#8a97a6}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.65 system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+    padding-block:18px 40px;padding-left:16px;padding-right:16px;max-width:900px;margin-inline:auto}
+  a{color:#7fb6e6}
+  h1{font-size:1.2rem;margin:0 0 4px}
+  .sub{color:var(--dim);font-size:.82rem;margin:0 0 14px}
+  .tabs{display:flex;gap:6px;margin:0 0 12px}
+  .tabs a{padding:6px 12px;border-radius:9px;border:1px solid var(--line);text-decoration:none;color:var(--dim);font-size:.86rem}
+  .tabs a.on{color:var(--ink);background:#1b2229;border-color:#37424e}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+  #tally{font-size:.84rem;color:var(--dim);margin:0 0 10px}
+  .dgrid{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:6px}
+  @media (max-width: 640px){ .dgrid{grid-template-columns:repeat(5,minmax(0,1fr))} }
+  .dcard{background:#11161c;border:1px solid var(--line);border-radius:8px;padding:6px 4px 5px;text-align:center}
+  .dcard.first{border-color:#2f6b49}.dcard.gave{border-color:#5a2a2f}
+  .dcard canvas{display:block;width:100%;max-width:56px;aspect-ratio:1;height:auto;margin:0 auto;image-rendering:pixelated;border-radius:4px;background:#07090c}
+  .dmarks{margin-top:4px;font-size:1rem;line-height:1.2;display:flex;justify-content:center;gap:5px}
+  .dmarks s{color:#7d8a99;text-decoration-color:#ff6b6b;text-decoration-thickness:2px}
+  .dmarks b{color:#bff0d2}
+  .dres{font-size:.64rem;color:#8a97a6}
+  .pager{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:6px;margin:14px 0 0}
+  .pager a,.pager span{min-width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;padding:0 10px;
+    border-radius:9px;border:1px solid var(--line);text-decoration:none;color:var(--ink);font-variant-numeric:tabular-nums;font-size:.9rem}
+  .pager span.cur{background:#2c5f88;border-color:#3a9be6}
+  .pager span.gap{border:0;min-width:18px;padding:0;color:var(--dim)}
+  .pager .off{opacity:.35;pointer-events:none}
+  .note{color:var(--dim);font-size:.8rem;margin:12px 0 0}
+</style>
+</head>
+<body>
+<h1>みんなの手書き — 蠅はどう読んだか</h1>
+<p class="sub">出題の枠に書かれた字（蠅が実際に見た小さな絵）と、蠅の答えの候補、答え合わせの結果。新しい順。
+打ち消し線は「ちがう」と言われた候補。<b>蠅の学習には使っていない</b>。</p>
+<div class="tabs">
+  <a href="?course=hiragana" data-course="hiragana">ひらがな</a>
+  <a href="?course=suji" data-course="suji">数字</a>
+</div>
+<div class="panel">
+  <p id="tally">読み込んでいます…</p>
+  <div class="dgrid" id="drawings"></div>
+  <nav class="pager" id="pager" aria-label="ページ"></nav>
+</div>
+<p class="note"><a id="back" href="/">← 蠅のページへ戻る</a></p>
+
+<script type="module">
+import { fetchDrawings, renderCards, tallyText } from './drawings.js?v=1';
+const PER = 30;
+const q = new URLSearchParams(location.search);
+const course = q.get('course') === 'suji' ? 'suji' : 'hiragana';
+const page = Math.max(1, Math.floor(+q.get('page') || 1));
+document.querySelectorAll('.tabs a').forEach((a) => a.classList.toggle('on', a.dataset.course === course));
+document.getElementById('back').href = course === 'suji' ? '/suji/' : '/';
+document.title = `みんなの手書き（${course === 'suji' ? '数字' : 'ひらがな'}） — 蠅はどう読んだか`;
+
+const link = (p, text, cls = '') => `<a class="${cls}" href="?course=${course}&page=${p}">${text}</a>`;
+try {
+  const d = await fetchDrawings(new URL('./', import.meta.url), course, PER, (page - 1) * PER);
+  const pages = Math.max(1, Math.ceil(d.tally.n / PER));
+  document.getElementById('tally').textContent = tallyText(d.tally) + (d.tally.n ? `　— ${page} / ${pages} ページ` : '');
+  renderCards(document.getElementById('drawings'), d.items);
+  // 1 … around the current page … last
+  const nums = new Set([1, pages, page - 2, page - 1, page, page + 1, page + 2].filter((p) => p >= 1 && p <= pages));
+  const list = [...nums].sort((a, b) => a - b);
+  let html = link(Math.max(1, page - 1), '‹ 前', page <= 1 ? 'off' : '');
+  list.forEach((p, i) => {
+    if (i && p - list[i - 1] > 1) html += '<span class="gap">…</span>';
+    html += p === page ? `<span class="cur">${p}</span>` : link(p, p);
+  });
+  html += link(Math.min(pages, page + 1), '次 ›', page >= pages ? 'off' : '');
+  document.getElementById('pager').innerHTML = pages > 1 ? html : '';
+} catch (e) {
+  document.getElementById('tally').textContent = '読み込めませんでした: ' + e.message;
+}
+</script>
+</body>
+</html>

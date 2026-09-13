@@ -62,14 +62,20 @@
   #charttip i,.legend i{display:inline-block;width:10px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
   .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.76rem;color:var(--dim);margin-top:8px}
   /* quiz */
-  .dgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}
+  .dgrid{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:6px}
+  @media (max-width: 640px){ .dgrid{grid-template-columns:repeat(5,minmax(0,1fr))} }
   .dcard{background:#11161c;border:1px solid var(--line);border-radius:8px;padding:6px 4px 5px;text-align:center}
   .dcard.first{border-color:#2f6b49}.dcard.gave{border-color:#5a2a2f}
-  .dcard canvas{display:block;width:56px;height:56px;margin:0 auto;image-rendering:pixelated;border-radius:4px;background:#07090c}
+  .dcard canvas{display:block;width:100%;max-width:56px;aspect-ratio:1;height:auto;margin:0 auto;image-rendering:pixelated;border-radius:4px;background:#07090c}
   .dmarks{margin-top:4px;font-size:1rem;line-height:1.2;display:flex;justify-content:center;gap:5px}
   .dmarks s{color:#7d8a99;text-decoration-color:#ff6b6b;text-decoration-thickness:2px}
   .dmarks b{color:#bff0d2}
   .dres{font-size:.64rem;color:#8a97a6}
+  .panel.others{display:none}
+  .olist{display:grid;grid-template-columns:1fr;gap:8px}
+  .olist a{display:block;padding:11px 13px;border-radius:10px;background:#11161c;border:1px solid var(--line);text-decoration:none;color:var(--ink)}
+  .olist a b{display:block;font-size:.95rem}
+  .olist a small{display:block;color:var(--dim);font-size:.76rem;margin-top:1px}
   .flywrap{position:relative}
   .soundbtn{position:absolute;left:10px;bottom:10px;width:38px;height:38px;padding:0;border-radius:50%;font-size:1rem;
     background:rgba(13,16,20,.72);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
@@ -196,7 +202,9 @@
     h1{font-size:1rem;margin:0 0 6px;display:flex;align-items:center;gap:8px}
     body[data-tab="play"] [data-tab]:not([data-tab="play"]),
     body[data-tab="record"] [data-tab]:not([data-tab="record"]),
-    body[data-tab="about"] [data-tab]:not([data-tab="about"]){display:none}
+    body[data-tab="about"] [data-tab]:not([data-tab="about"]),
+    body[data-tab="other"] [data-tab]:not([data-tab="other"]){display:none}
+    body[data-tab="other"] .panel.others{display:block}
     body:not([data-tab="play"]) .bwin{display:none}
     .panel{padding:12px;border-radius:12px}
     /* the stage: edge to edge */
@@ -312,6 +320,7 @@
   <h2><span>みんなの手書き — 蠅はどう読んだか</span></h2>
   <p class="note" id="drawtally" style="margin:0 0 10px">…</p>
   <div class="dgrid" id="drawings"></div>
+  <p class="note" style="margin-top:10px"><a id="drawmore" hidden href="#">すべての記録を見る →</a></p>
   <p class="note">出題の枠に書かれた字（蠅が実際に見た小さな絵）と、蠅の答えの候補、答え合わせの結果。
   打ち消し線は「ちがう」と言われた候補。書いた字はここで誰でも見られる形で残るが、<b>蠅の学習には使っていない</b>。</p>
 </div>
@@ -403,6 +412,21 @@
   </div>
 </div>
 
+<div class="panel others" data-tab="other">
+  <h2><span>ほかのハエのページ</span></h2>
+  <nav class="olist">
+    <a href="/"><b>ひらがな読み書き学習したハエ</b><small>46 文字を練習した脳が、字を読んで地面に書く</small></a>
+    <a href="/suji/"><b>数字を読む蠅</b><small>MNIST の数字 1〜9 を練習した脳</small></a>
+    <a href="/juku/kiroku.html"><b>みんなの手書きの記録</b><small>書かれた字と、蠅がどう読んだか</small></a>
+    <a href="/tataki/"><b>ハエたたき</b><small>1 分で何匹たたけるか</small></a>
+    <a href="/game2/"><b>ハエたたき 1 対 1</b><small>だれかと同じ場で競う</small></a>
+    <a href="/game/"><b>うんち陣取り</b><small>うんちを置いて蠅を集める対戦</small></a>
+    <a href="/kansatsu/"><b>蠅観察</b><small>群がる蠅をタップすると、その脳が見える</small></a>
+    <a href="/gakushu/"><b>匂いを覚えさせる</b><small>キノコ体の学習そのもの</small></a>
+    <a href="/meiro/"><b>迷路実験</b><small>脳で動く蠅と迷路</small></a>
+  </nav>
+</div>
+
 <footer data-tab="about">
   数字: <a href="http://yann.lecun.com/exdb/mnist/">MNIST</a> を 12×12 に縮小 /
   書き順: <a href="https://kanjivg.tagaini.net/">KanjiVG</a>（Ulrich Apel, CC BY-SA 3.0。suji/strokes.json はその線を点列にしたもの） /
@@ -410,18 +434,19 @@
   (Shiu et al., <i>Nature</i> 2024) / コネクトーム: FlyWire v783
   (<a href="https://codex.flywire.ai/">Dorkenwald, Matsliah et al.</a>, CC-BY 4.0) /
   細胞型注釈: <a href="https://github.com/flyconnectome/flywire_annotations">Schlegel et al. 2024</a>, CC-BY 4.0.<br>
-  <a href="/hiragana/">ひらがな読み書き学習したハエ</a> · <a href="/gakushu/">匂いを覚えさせる</a> · <a href="/">ハエたたき</a> ·
+  <a href="/">ひらがな読み書き学習したハエ</a> · <a href="/gakushu/">匂いを覚えさせる</a> · <a href="/tataki/">ハエたたき</a> ·
   <a href="/kansatsu/">蠅観察</a> · <a href="/game/">うんち陣取り</a> · <a href="/meiro/">迷路</a>
 </footer>
 
 <nav class="tabbar" aria-label="表示の切り替え">
-  <button data-go="play" aria-selected="true"><span>🪰</span>出題</button>
+  <button data-go="play" aria-selected="true"><span>✍️</span>出題</button>
   <button data-go="record" aria-selected="false"><span>📈</span>記録</button>
   <button data-go="about" aria-selected="false"><span>🧠</span>しくみ</button>
+  <button data-go="other" aria-selected="false"><span>🪰</span>その他</button>
 </nav>
 
 <script type="module">
-import { runPage } from '../juku/page.js?v=50';
+import { runPage } from '../juku/page.js?v=51';
 runPage({ course: 'suji', rows: ['123456789'], padInk: 17.7, pen: 0.085 });
 </script>
 </body>

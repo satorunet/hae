@@ -5,7 +5,7 @@
 //   node juku/api.mjs          (pm2: hae-juku-api, behind nginx at /juku/api/)
 //
 //   POST /drawing   { course, img: base64 of size*size bytes, cands: [label...], result }
-//   GET  /drawings?course=hiragana&limit=60
+//   GET  /drawings?course=hiragana&limit=30&offset=0   (newest first)
 //
 // Records are appended to juku/state/<course>/drawings.jsonl.
 import { createServer } from 'node:http';
@@ -14,7 +14,7 @@ import { COURSES } from './reader.mjs';
 
 const PORT = +process.env.JUKU_API_PORT || 3020;
 const STATE = new URL('state/', import.meta.url);
-const KEEP = 500;                          // recent records held in memory per course
+const KEEP = 50000;                         // records held in memory per course (a few hundred bytes each)
 const RESULTS = new Set(['1', '2', '3', 'giveup']);   // right at the 1st/2nd/3rd choice, or none
 const recent = {};
 const hits = new Map();                    // ip -> [timestamps] for a simple rate limit
@@ -48,10 +48,12 @@ createServer(async (req, res) => {
       const course = url.searchParams.get('course');
       if (!recent[course]) return send(res, 400, { error: 'course' });
       const limit = Math.max(1, Math.min(200, +url.searchParams.get('limit') || 60));
+      const offset = Math.max(0, Math.floor(+url.searchParams.get('offset') || 0));   // from the newest
       const list = recent[course];
       const tally = { n: list.length, first: 0, top3: 0 };
       for (const r of list) { if (r.result === '1') tally.first++; if (r.result !== 'giveup') tally.top3++; }
-      return send(res, 200, { course, tally, items: list.slice(-limit).reverse() });
+      const end = Math.max(0, list.length - offset);
+      return send(res, 200, { course, tally, offset, limit, items: list.slice(Math.max(0, end - limit), end).reverse() });
     }
     if (req.method === 'POST' && url.pathname === '/drawing') {
       const ip = req.headers['x-real-ip'] || req.socket.remoteAddress;

@@ -32,7 +32,7 @@ const TAU = Math.PI * 2;
 
 const N_FLIES = 30;               // before the match and after it: fixed, the players cannot change it
 const N_MATCH = 50;              // during the match itself
-const MODE = window.__HAE_MODE || 'vs';            // 'solo60' on the front page, 'vs' on /game2/
+const MODE = window.__HAE_MODE || 'vs';            // 'solo60' on /tataki/, 'vs' on /game2/
 const SOLO60 = MODE === 'solo60';
 const BEST_KEY = 'hae-tataki-best-60';
 const MATCH_TIME = SOLO60 ? 60 : 45;   // seconds of swatting
@@ -1862,7 +1862,7 @@ function bestScore() {
 function shareResult() {
   const a = game.kills[0];
   const text = `ハエたたき：1分で ${a}匹 たたきました。\n#ハエたたき`;
-  const url = 'https://hae.satoru.net/';
+  const url = MODE === 'solo60' ? 'https://hae.satoru.net/tataki/' : 'https://hae.satoru.net/game2/';
   if (navigator.share) {
     navigator.share({ title: 'ハエたたき', text, url }).catch(() => { /* the sheet was dismissed */ });
     return;

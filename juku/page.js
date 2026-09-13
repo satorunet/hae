@@ -5,6 +5,7 @@ import { FlagFly } from '../suji/flag.js?v=37';
 import { RecordChart, COLORS } from './chart.js?v=3';
 import { normalise } from '../hiragana/kana.mjs?v=2';
 import { Sound } from './sound.js?v=1';
+import { fetchDrawings, renderCards, tallyText } from './drawings.js?v=1';
 
 const $ = (s) => document.querySelector(s);
 const pct = (v, d = 0) => (v == null ? '–' : `${(100 * v).toFixed(d)}%`);
@@ -508,31 +509,23 @@ export function runPage(o) {
       .then(() => loadDrawings()).catch(() => {});
     handImg = null;
   }
+  const LATEST = 30;                               // the rest are on juku/kiroku.html, by page
   async function loadDrawings() {
     const box = $('#drawings');
     if (!box) return;
     try {
-      const r = await fetch(`../juku/api/drawings?course=${o.course}&limit=60&t=${Date.now()}`, { cache: 'no-store' });
-      const d = await r.json();
-      const T = d.tally;
-      $('#drawtally').textContent = T.n
-        ? `${T.n} 字: 第 1 候補で正解 ${pct(T.first / T.n)}（${T.first}）、第 3 候補までに正解 ${pct(T.top3 / T.n)}（${T.top3}）`
-        : 'まだ誰も書いていない。出題の枠に字を書くと、ここに残る。';
-      box.innerHTML = d.items.map((it, i) => {
-        const k = it.result === 'giveup' ? 9 : +it.result;
-        const marks = it.cands.map((c, j) => j + 1 < k || k === 9 ? `<s>${esc(c)}</s>` : j + 1 === k ? `<b>${esc(c)}</b>` : '').filter(Boolean).join('');
-        const when = new Date(it.t).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-        return `<div class="dcard ${k === 9 ? 'gave' : k === 1 ? 'first' : ''}" title="${when}"><canvas data-i="${i}" width="${it.size}" height="${it.size}"></canvas>` +
-          `<div class="dmarks">${marks}</div><div class="dres">${k === 9 ? '諦めた' : k === 1 ? '一発で正解' : `${k} 回目で正解`}</div></div>`;
-      }).join('');
-      box.querySelectorAll('canvas').forEach((cv) => {
-        const it = d.items[+cv.dataset.i], S = it.size, raw = atob(it.img);
-        const g = cv.getContext('2d'), im = g.createImageData(S, S);
-        for (let j = 0; j < S * S; j++) { const v = raw.charCodeAt(j); im.data[4 * j] = im.data[4 * j + 1] = im.data[4 * j + 2] = v; im.data[4 * j + 3] = 255; }
-        g.putImageData(im, 0, 0);
-      });
+      const d = await fetchDrawings(new URL('./', import.meta.url), o.course, LATEST);
+      $('#drawtally').textContent = tallyText(d.tally);
+      renderCards(box, d.items);
+      const more = $('#drawmore');
+      if (more) {
+        more.hidden = d.tally.n <= LATEST;
+        more.href = `../juku/kiroku.html?course=${o.course}`;
+        more.textContent = `すべての記録を見る（${d.tally.n.toLocaleString()} 件）→`;
+      }
     } catch { /* the record can wait */ }
   }
+
   loadDrawings();
   setInterval(() => { if (document.body.dataset.tab === 'record' || innerWidth > 640) loadDrawings(); }, 30e3);
 
