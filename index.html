@@ -267,6 +267,55 @@
     #chart{height:200px}
     footer{padding-bottom:10px}
   }
+  /* ---------------- wide screens: the same app, laid out for a desk ---------------- */
+  @media (min-width: 900px){
+    body{max-width:1240px;padding-block:14px 40px}
+    body[data-tab="play"] [data-tab]:not([data-tab="play"]),
+    body[data-tab="record"] [data-tab]:not([data-tab="record"]),
+    body[data-tab="about"] [data-tab]:not([data-tab="about"]),
+    body[data-tab="other"] [data-tab]:not([data-tab="other"]){display:none}
+    body[data-tab="other"] .panel.others{display:block}
+    body:not([data-tab="play"]) .bwin{display:none}
+    h1{font-size:1.25rem;margin:0 0 14px;min-height:44px;display:flex;align-items:center}
+    /* tabs as a segmented control in the header, right */
+    .tabbar{display:flex;position:absolute;top:14px;right:max(16px, calc((100vw - 1240px) / 2 + 16px));z-index:60;gap:4px;
+      padding:4px;border-radius:12px;background:#151a20;border:1px solid var(--line)}
+    .tabbar button{display:flex;align-items:center;gap:6px;background:transparent;border:0;color:#8a97a6;font-size:.88rem;
+      padding:7px 14px;border-radius:9px}
+    .tabbar button span{font-size:1rem}
+    .tabbar button:hover{color:var(--ink);background:#1b2229}
+    .tabbar button[aria-selected="true"]{color:var(--ink);background:#26303a}
+    /* play: the fly large on the left, the question and controls in a column on the right */
+    .panel.quiz{display:grid;grid-template-columns:minmax(0,1fr) 300px;column-gap:18px;align-items:start;padding:14px}
+    .panel.quiz > h2{grid-column:1 / -1}
+    .panel.quiz > .flywrap{grid-column:1;grid-row:2 / span 20}
+    .panel.quiz > :not(h2):not(.flywrap){grid-column:2}
+    #fly{border-radius:10px}
+    .stagechip{display:block;position:absolute;top:12px;left:12px;padding:5px 11px;border-radius:14px;
+      background:rgba(9,12,16,.72);border:1px solid #2b3642;font-size:.82rem;color:#dbe5ee;
+      -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);font-variant-numeric:tabular-nums}
+    .stagechip b{color:#fff}.stagechip small{color:#8a97a6;margin-left:5px}
+    .quizrow{display:grid;grid-template-columns:1fr 1fr;row-gap:8px;margin-top:6px;align-items:center}
+    .quizrow > .qbox:first-child{grid-column:1 / -1;justify-self:center;margin-top:10px}
+    .qdraw{width:260px;height:260px}
+    #q{width:100%;height:100%;border-radius:12px}
+    #qpad{border-radius:12px}
+    .qdraw .xclear{top:8px;right:8px;width:34px;height:34px;font-size:1.15rem}
+    .qlab{max-width:none}
+    .verdict{width:auto;font-size:3rem;text-align:center}
+    .tally{min-width:0}
+    .panel.quiz > .row{margin-top:12px}
+    #autobtn{width:100%;min-height:46px;font-size:1rem;border-radius:12px}
+    .judge{padding:10px;justify-content:center}
+    .judge .jq{width:100%;text-align:center;margin:0 0 4px}
+    .judge button{flex:1;min-height:50px;font-size:1.1rem;border-radius:12px}
+    /* record / about / other: two columns of cards */
+    body:not([data-tab="play"]) .cols{display:grid}
+    .panel{margin-bottom:14px}
+    body[data-tab="record"] .panel[data-tab="record"]:first-of-type{grid-column:1 / -1}
+    .olist{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .sub[data-tab="about"]{font-size:.9rem;max-width:760px}
+  }
 </style>
 </head>
 <body data-tab="play">
@@ -441,7 +490,7 @@
 </nav>
 
 <script type="module">
-import { runPage } from '/juku/page.js?v=51';
+import { runPage } from '/juku/page.js?v=52';
 import { ROWS, INK } from '/hiragana/kana.mjs?v=2';
 const ROWNAME = ['あ', 'か', 'さ', 'た', 'な', 'は', 'ま', 'や', 'ら', 'わ'];
 runPage({

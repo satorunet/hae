@@ -636,7 +636,10 @@ export class FlagFly {
     const w = this.canvas.clientWidth || 320;
     // on a phone the fly gets a good share of the screen; elsewhere it follows the width
     const phone = typeof matchMedia === 'function' && matchMedia('(max-width: 640px)').matches;
-    const h = phone ? Math.round(clamp(innerHeight * 0.42, 240, 460)) : Math.round(Math.max(190, Math.min(330, w * 0.62)));
+    const wide = typeof matchMedia === 'function' && matchMedia('(min-width: 900px)').matches;
+    const h = phone ? Math.round(clamp(innerHeight * 0.42, 240, 460))
+      : wide ? Math.round(clamp(Math.min(w * 0.72, innerHeight - 130), 380, 700))    // the desk layout: the fly is the main view
+      : Math.round(Math.max(190, Math.min(330, w * 0.62)));
     this.canvas.style.height = h + 'px';
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
