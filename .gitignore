@@ -1,4 +1,10 @@
 __pycache__/
 *.pyc
 .dev/
-juku/state/
+# the trainers' output: only the final record and the learned brains are kept in the repo
+juku/state/*/*
+!juku/state/*/status.json
+!juku/state/*/log.jsonl
+!juku/state/*/trainer.json
+!juku/state/hiragana/brain-100000.bin.gz
+!juku/state/suji/brain-110217.bin.gz
