@@ -143,6 +143,8 @@ export class FlagFly {
     scene.add(this.food.mesh);
     this.ink = this.makeInk();
     scene.add(this.ink.mesh);
+    this.tube = this.makeTube();
+    scene.add(this.tube.group);
 
     this.body.root.position.set(0, 0, this.z0);
     this.body.update();
@@ -372,6 +374,44 @@ export class FlagFly {
       if (this.afterLand) { const go = this.afterLand; this.afterLand = null; go(); }
       else if (Math.random() < 0.5) this.cock(0.5);
     }
+  }
+
+  // Drinking: a thin tube reaches from the tip of the proboscis down into the
+  // drop, and swallows of sugar water run up it. (The labellum is not a
+  // separate joint in the skeleton, so the tube stands in for its reach.)
+  makeTube() {
+    const group = new THREE.Group();
+    const geo = new THREE.CylinderGeometry(0.02, 0.034, 1, 10, 6, true);
+    geo.translate(0, 0.5, 0);                          // base at the mouth, growing along +y
+    const mesh = new THREE.Mesh(geo, new THREE.MeshPhysicalMaterial({ color: 0xa8743f, roughness: 0.35,
+      clearcoat: 0.6, transparent: true, opacity: 0.92, side: THREE.DoubleSide }));
+    const bolus = new THREE.Mesh(new THREE.SphereGeometry(0.036, 10, 8),
+      new THREE.MeshStandardMaterial({ color: 0xf2c25c, emissive: 0x6a4a10, roughness: 0.3 }));
+    group.add(mesh, bolus);
+    group.visible = false;
+    return { group, mesh, bolus, w: 0, tipLocal: new THREE.Vector3(0.3, 0, -0.18) };
+  }
+  poseTube(dt, feeding) {
+    const T = this.tube;
+    T.w = approach(T.w, feeding && this.phaseT > 0.25 && this.food.life > 0.05 ? 1 : 0, dt, 0.12);
+    T.group.visible = T.w > 0.02;
+    if (!T.group.visible) return;
+    this.body.root.updateMatrixWorld(true);
+    const S = this._ts ??= new THREE.Vector3(), E = this._te ??= new THREE.Vector3(), D = this._td ??= new THREE.Vector3();
+    S.copy(T.tipLocal); this.body.byName.c_haustellum.obj.localToWorld(S);
+    E.set(this.food.x, this.food.y, 0.06 + 0.1 * this.food.life);
+    D.subVectors(E, S);
+    const len = D.length();
+    D.normalize();
+    const pulse = 1 + 0.18 * Math.sin(this.t * 13);       // the pharynx pumping
+    T.mesh.position.copy(S);
+    T.mesh.quaternion.setFromUnitVectors(UP_Y, D);
+    T.mesh.scale.set(pulse, len * T.w, pulse);
+    // a swallow travelling up from the drop to the mouth, again and again
+    const u = (this.t * 1.7) % 1;
+    T.bolus.visible = T.w > 0.9;
+    T.bolus.position.copy(E).lerp(S, u);
+    T.bolus.scale.setScalar(0.7 + 0.5 * Math.sin(Math.PI * u));
   }
 
   // the trail the writing leg leaves: flat quads on the ground, one per step of the tip
@@ -788,6 +828,8 @@ export class FlagFly {
     this.body.update();
     if (this.wingOpen > 0.002 || this._wingsOut) this.poseWings();
 
+    this.poseTube(dt, feeding);
+
     // the ink comes off the real tip of the leg, whenever it touches the ground
     if (this.phase === 'writing') {
       const tip = this.body.legTip('lf'), w = this._w ??= new THREE.Vector3();
@@ -910,7 +952,7 @@ function rotAdd(q, v, p) {
   p[0] += ix * w + iw * -x + iy * -z - iz * -y; p[1] += iy * w + iw * -y + iz * -x - ix * -z; p[2] += iz * w + iw * -z + ix * -y - iy * -x;
 }
 
-const AY = new THREE.Vector3(0, 1, 0), AZ = new THREE.Vector3(0, 0, 1);
+const AY = new THREE.Vector3(0, 1, 0), AZ = new THREE.Vector3(0, 0, 1), UP_Y = new THREE.Vector3(0, 1, 0);
 const ease = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
