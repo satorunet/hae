@@ -151,7 +151,7 @@
   <p id="status">脳を読み込んでいます…（30 MB ほど）</p>
   <p class="note" id="brainnote"></p>
   <p class="note" id="flynote">問題は MNIST のテストセット（練習には使わない 9,020 枚）から。
-  蠅が前脚で旗を立てて答え、少し振ってから下ろす。<b>正解なら、その数字を前脚で地面に書いて見せ、それから餌（砂糖水の粒）が落ちてきて、歩いて行って口吻を伸ばして食べる。</b>
+  蠅はまず答えの数字を前脚で地面に書き、<b>その自分の字を旗にして掲げ</b>、少し振ってから下ろす。<b>正解なら餌（砂糖水の粒）が落ちてきて、歩いて行って口吻を伸ばして食べる。</b>
   体は他のページと同じ NeuroMechFly の骨格で、歩行は flygym の CPG ＋ MuJoCo で実測した体速度、
   身づくろいと旗を持つ動作は前脚足先の逆運動学。</p>
 </div>
@@ -261,7 +261,7 @@
 </footer>
 
 <script type="module">
-import { runPage } from '../juku/page.js?v=21';
+import { runPage } from '../juku/page.js?v=22';
 runPage({ course: 'suji', rows: ['123456789'], padInk: 17.7, pen: 0.085 });
 </script>
 </body>
