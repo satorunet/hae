@@ -152,16 +152,83 @@
   .kleg i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
   footer{margin-top:26px;font-size:.74rem;color:#5d6a78;line-height:1.8}
   footer a{color:#7f8fa1}
+  /* ---------------- phones: one screen at a time, the fly first ---------------- */
+  .tabbar{display:none}
+  .stagechip{display:none}
+  @media (max-width: 640px){
+    body{padding-block:8px calc(78px + env(safe-area-inset-bottom));font-size:14px}
+    h1{font-size:1rem;margin:0 0 6px;display:flex;align-items:center;gap:8px}
+    body[data-tab="play"] [data-tab]:not([data-tab="play"]),
+    body[data-tab="record"] [data-tab]:not([data-tab="record"]),
+    body[data-tab="about"] [data-tab]:not([data-tab="about"]){display:none}
+    body:not([data-tab="play"]) .bwin{display:none}
+    .panel{padding:12px;border-radius:12px}
+    /* the stage: edge to edge */
+    .panel.quiz{background:transparent;border:0;padding:0;margin-bottom:0}
+    .panel.quiz h2{display:none}
+    .flywrap{margin:0 -16px}
+    #fly{border-radius:0}
+    .brainbtn{top:10px;right:10px;padding:7px 11px;font-size:.8rem}
+    .stagechip{display:block;position:absolute;top:10px;left:10px;padding:5px 10px;border-radius:14px;
+      background:rgba(9,12,16,.72);border:1px solid #2b3642;font-size:.78rem;color:#dbe5ee;
+      -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);font-variant-numeric:tabular-nums;max-width:58%}
+    .stagechip b{color:#fff}
+    .stagechip small{color:#8a97a6;margin-left:4px}
+    /* question box big enough to write in with a finger; score beside it */
+    .quizrow{display:grid;grid-template-columns:min(58vw,300px) 1fr;grid-template-rows:auto 1fr;column-gap:12px;row-gap:2px;
+      margin-top:12px;align-items:start}
+    .quizrow > .qbox:first-child{grid-row:1 / span 2}
+    .qdraw{width:min(58vw,300px);height:min(58vw,300px)}
+    #q{width:100%;height:100%;border-radius:12px}
+    #qpad{border-radius:12px}
+    .qdraw .xclear{top:6px;right:6px;width:34px;height:34px;font-size:1.15rem}
+    .qlab{max-width:none}
+    .verdict{width:auto;text-align:left;font-size:3rem;line-height:1.1}
+    .tally{min-width:0}
+    .scoreline{font-size:1.35rem}
+    .hist{gap:2px}.hist i{width:6px;height:6px}
+    .panel.quiz > .row{margin-top:10px}
+    #autobtn{width:100%;min-height:46px;font-size:1rem;border-radius:12px}
+    #status{margin-top:8px}
+    #flynote{display:none}
+    /* marking your own writing: big buttons, always in reach above the tabs */
+    .judge{position:fixed;left:10px;right:10px;bottom:calc(70px + env(safe-area-inset-bottom));z-index:45;
+      justify-content:center;padding:10px;border-radius:14px;box-shadow:0 8px 28px rgba(0,0,0,.55);background:#131a21}
+    .judge .jq{width:100%;text-align:center;margin:0 0 2px}
+    .judge button{flex:1;min-height:52px;font-size:1.15rem;border-radius:12px}
+    /* the brain window: compact */
+    .bwin{width:min(50vw,210px);font-size:.6rem}
+    .bwhead{padding:3px 3px 3px 7px}.bwtitle{font-size:.66rem}.bwmode{font-size:.58rem}
+    .bwclose{padding:2px 7px}
+    .bwbody{padding:5px 6px 6px}
+    .bwnote,.bpline,#bpbars{display:none}
+    .bwrow{margin-top:1px}.bwrow span{width:4.9em}.bwrow em{width:3.1em}
+    .bwrow canvas{height:14px}
+    /* the tab bar */
+    .tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:60;background:rgba(13,16,20,.96);
+      border-top:1px solid #252d36;padding:6px 8px calc(6px + env(safe-area-inset-bottom));
+      -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+    .tabbar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;background:transparent;border:0;
+      color:#7d8a99;font-size:.72rem;padding:6px 0;border-radius:10px;min-height:52px}
+    .tabbar button span{font-size:1.25rem;line-height:1.1}
+    .tabbar button[aria-selected="true"]{color:#e6edf3;background:#1b2229}
+    .stats{grid-template-columns:repeat(3,1fr);gap:6px}
+    .stat{padding:7px 8px}.stat .v{font-size:1.2rem}.stat .k{font-size:.66rem}
+    .grow{gap:3px}.gl{font-size:.95rem}
+    #chart{height:200px}
+    footer{padding-bottom:10px}
+  }
 </style>
 </head>
-<body>
+<body data-tab="play">
 
 <h1>ひらがなを読む蠅</h1>
-<div class="panel">
+<div class="panel quiz" data-tab="play">
   <h2><span>出題 → このページの蠅が答える</span></h2>
   <div class="flywrap">
     <canvas id="fly"></canvas>
-    <button id="brainbtn" class="brainbtn" aria-pressed="false">🧠 脳の活動</button>
+    <div id="stagechip" class="stagechip">…</div>
+    <button id="brainbtn" class="brainbtn" aria-pressed="false">🧠 脳</button>
     <div id="loadbar" class="loadbar"><span>脳を読み込み中…</span><div class="lbtrack"><i></i></div></div>
   </div>
   <div class="quizrow">
@@ -195,27 +262,11 @@
   答えの候補は、サーバの蠅がいままでに習った段の文字だけ。蠅はまず答えの字を前脚で地面に書き順どおりに書き、その自分の字を旗にして掲げて答える。正解なら餌が落ちてきて食べに行く。</p>
 </div>
 
-<div class="panel">
-  <h2><span>手書きで試す</span></h2>
-  <div class="padrow">
-    <div class="padwrap"><canvas id="pad" width="220" height="220"></canvas><button class="xclear" hidden aria-label="消す">×</button></div>
-    <div class="side">
-      <canvas id="prev" width="16" height="16"></canvas>
-      <p class="guess" id="guess">–<small id="guesssub">ここにひらがなを 1 文字書くと出題が止まり、1 画書くごとに上の蠅が読んで旗で答える</small></p>
-      <div class="row" style="margin-top:10px">
-        <button id="backbtn">出題に戻る</button>
-      </div>
-      <p class="note">左上の小さな絵が、蠅に実際に見せる 16×16 の絵。練習の絵と同じように、真ん中に寄せて大きさとインクの量をそろえる。
-      手書きでは練習していないので、フォントより読みにくい。</p>
-    </div>
-  </div>
-</div>
-
-<p class="sub">FlyWire の蠅の脳（キノコ体）が、サーバの上で休まずひらがなを練習している。
+<p class="sub" data-tab="about">FlyWire の蠅の脳（キノコ体）が、サーバの上で休まずひらがなを練習している。
 あ行から始めて、<b>練習に一度も使っていないフォント</b>で 75% 読めたら五十音の次の段に進む。
 このページの蠅は、そのサーバの蠅の最新の脳をブラウザに写したもの。</p>
 
-<div class="panel">
+<div class="panel" data-tab="record">
   <h2><span>サーバの蠅の成績</span><span class="live" id="livestate">…</span></h2>
   <div class="lvbox"><span id="lv">Lv –</span><span id="lvsub">記録を読み込んでいます…</span></div>
   <div class="stats">
@@ -231,7 +282,7 @@
   </div>
 </div>
 
-<div class="panel">
+<div class="panel" data-tab="record">
   <h2><span>正答率の記録</span></h2>
   <div class="chartwrap"><canvas id="chart"></canvas><div id="charttip" hidden></div></div>
   <div class="legend">
@@ -241,14 +292,14 @@
   <p class="note">縦線がレベルアップ。全記録は <a href="../juku/state/hiragana/log.jsonl">log.jsonl</a>。</p>
 </div>
 
-<div class="panel">
+<div class="panel" data-tab="about">
   <h2><span>区画の出力（候補の上位）</span></h2>
   <table id="bars"><tbody></tbody></table>
   <p class="note">数字は<b>その文字の区画の MBON が、この絵から受ける入力の強さ</b>（学習前を 100 とする）。
   いちばん入力を受けていない区画が答え。棒は他の区画よりどれだけ弱いか。</p>
 </div>
 
-<div class="panel">
+<div class="panel" data-tab="about">
   <h2><span>ケニヨン細胞の符号</span></h2>
   <canvas id="kc" width="720" height="260"></canvas>
   <div class="kleg">
@@ -258,7 +309,7 @@
   <p class="note">5,177 個のケニヨン細胞を FlyWire の実際の細胞体位置で並べたもの。</p>
 </div>
 
-<div class="panel">
+<div class="panel" data-tab="about">
   <h2><span>仕組み</span></h2>
   <p class="note"><b>入力</b>: 16×16 の各ピクセルに、685 本の嗅覚投射ニューロンを 2〜3 本ずつ割り当て、
   濃さに比例した（最大 270 Hz の）ポアソン入力で叩く。数字の蠅（12×12）より細かくしたのは「ぬ/め」「る/ろ」「は/ほ」を分けるため。</p>
@@ -295,7 +346,7 @@
   </div>
 </div>
 
-<footer>
+<footer data-tab="about">
   文字: Google Fonts（SIL Open Font License）の日本語 40 書体。テスト用は Klee One / Zen Kurenaido / Shippori Mincho / M PLUS Rounded 1c / Sawarabi Gothic /
   書き順: <a href="https://kanjivg.tagaini.net/">KanjiVG</a>（Ulrich Apel, CC BY-SA 3.0。suji/strokes.json はその線を点列にしたもの） /
   モデル: <a href="https://github.com/philshiu/Drosophila_brain_model">philshiu/Drosophila_brain_model</a>
@@ -306,8 +357,14 @@
   <a href="/kansatsu/">蠅観察</a> · <a href="/game/">うんち陣取り</a> · <a href="/meiro/">迷路</a>
 </footer>
 
+<nav class="tabbar" aria-label="表示の切り替え">
+  <button data-go="play" aria-selected="true"><span>🪰</span>出題</button>
+  <button data-go="record" aria-selected="false"><span>📈</span>記録</button>
+  <button data-go="about" aria-selected="false"><span>🧠</span>しくみ</button>
+</nav>
+
 <script type="module">
-import { runPage } from '../juku/page.js?v=33';
+import { runPage } from '../juku/page.js?v=35';
 import { ROWS, INK } from './kana.mjs?v=2';
 const ROWNAME = ['あ', 'か', 'さ', 'た', 'な', 'は', 'ま', 'や', 'ら', 'わ'];
 runPage({

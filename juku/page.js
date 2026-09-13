@@ -1,6 +1,7 @@
 // What /suji/ and /hiragana/ share: the server's record, a copy of the
-// server's fly answering questions in the browser, and a drawing pad.
-import { FlagFly } from '../suji/flag.js?v=30';
+// server's fly answering questions in the browser, and writing your own letter
+// in the question box for it to read.
+import { FlagFly } from '../suji/flag.js?v=32';
 import { RecordChart, COLORS } from './chart.js?v=3';
 import { normalise } from '../hiragana/kana.mjs?v=2';
 
@@ -41,6 +42,7 @@ export function runPage(o) {
         : `${o.levelName(s.level)}まで（${unlocked()} 文字）。未見フォントで ${pct(s.levelUp)} 取れたら次の段`;
     }
     $('#practised').textContent = s.practised.toLocaleString();
+    drawChip();
     $('#running').textContent = pct(s.running, 1);
     $('#runsub').textContent = s.window ? `直近 ${s.window} 問` : 'レベルが上がったばかり';
     $('#testpct').textContent = s.lastTest ? pct(s.lastTest.test, 1) : '–';
@@ -51,6 +53,15 @@ export function runPage(o) {
     $('#since').textContent = `学習開始から ${days < 1 ? `${(days * 24).toFixed(1)} 時間` : `${days.toFixed(1)} 日`}`;
     chart.set(s.history);
     drawGrid();
+  }
+  // the chip over the stage on phones: where the server's fly has got to
+  function drawChip(practised) {
+    const s = status, el = $('#stagechip');
+    if (!s || !el) return;
+    const test = s.lastTest ? `テスト ${pct(s.lastTest.test)}` : 'テスト待ち';
+    el.innerHTML = o.levelName
+      ? `<b>Lv ${s.level}</b> ${esc(o.levelName(s.level))}まで<small>${test}</small>`
+      : `<b>${test}</b><small>練習 ${(practised ?? s.practised).toLocaleString()} 枚</small>`;
   }
   function drawGrid() {
     const per = status?.lastTest?.perLetter || [];
@@ -73,6 +84,7 @@ export function runPage(o) {
       if (r.ok) {
         const L = await r.json();
         $('#practised').textContent = L.practised.toLocaleString();
+        drawChip(L.practised);
         $('#running').textContent = pct(L.running, 1);
         $('#runsub').textContent = L.window ? `直近 ${L.window} 問` : 'レベルが上がったばかり';
         const age = (Date.now() - L.t) / 1000;
@@ -197,7 +209,8 @@ export function runPage(o) {
   function setMode(m) {
     bwMode = m;
     const el = $('#bwmode');
-    el.textContent = MODE_TEXT[m]; el.className = 'bwmode ' + m;
+    el.textContent = innerWidth <= 640 ? { idle: 'ふだん', ask: '問題を見ている', read: '字を見ている' }[m] : MODE_TEXT[m];
+    el.className = 'bwmode ' + m;
   }
   function feed(f, mode) {
     series.push({ pn: f.pn, kc: f.kc, mb: f.mb, mode });
@@ -222,9 +235,12 @@ export function runPage(o) {
       // first time: outside the fly's view, top right - beside the page where there is room,
       // otherwise in the top-right corner of the screen
       const panel = $('.flywrap').closest('.panel').getBoundingClientRect();
+      const stage = $('.flywrap').getBoundingClientRect();
       p = innerWidth - panel.right >= w + 24
         ? { x: panel.right + 16, y: Math.max(8, panel.top) }
-        : { x: innerWidth - w - 8, y: 8 };
+        : innerWidth <= 640
+          ? { x: innerWidth - w - 8, y: Math.max(8, stage.top + 52) }   // phone: under the 🧠 button, on the stage
+          : { x: innerWidth - w - 8, y: 8 };
     }
     const x = Math.min(Math.max(4, p.x), innerWidth - w - 4), y = Math.min(Math.max(4, p.y), innerHeight - 40);
     win.style.left = x + 'px'; win.style.top = y + 'px';
@@ -329,10 +345,11 @@ export function runPage(o) {
   setBrain(brainOn);
 
   // ------------------------------------------------------------ drawing pad
-  // Two surfaces share one drawing: the pad further down, and the question box
-  // at the top (a transparent canvas over the question, so the question box is
-  // also where you can write your own).
+  // The question box is also where you write: a transparent canvas over the
+  // question. (A separate, larger pad is used too if a page has one.)
   const pad = $('#pad'), qpad = $('#qpad');
+  const setGuess = (t) => { const g = $('#guess'); if (g) g.firstChild.textContent = t; };
+  const setGuessSub = (t) => { const g = $('#guesssub'); if (g) g.textContent = t; };
   let drawing = false, strokes = [];
   function paint(cv, clear) {
     const w = cv.width, h = cv.height, c = cv.getContext('2d');
@@ -350,9 +367,9 @@ export function runPage(o) {
   }
   function redrawPad() {
     document.querySelectorAll('.xclear').forEach((b) => { b.hidden = !strokes.length; });
-    paint(pad, false);
+    if (pad) paint(pad, false);
     if (qpad) paint(qpad, !hand);
-    if (meta) drawPixels($('#prev'), padImage());
+    if (meta && $('#prev')) drawPixels($('#prev'), padImage());
   }
   // Hand mode: the moment someone starts drawing, the quiz stops and the fly
   // reads the drawing instead - again after every stroke - holding up its
@@ -381,7 +398,7 @@ export function runPage(o) {
   function holdCandidate() {
     const c = handCands[handK];
     $('#qans').textContent = labels[c];
-    $('#guess').firstChild.textContent = labels[c];
+    setGuess(labels[c]);
     if (fly) fly.show(labels[c], handK === 0 ? handSure : 0.25, false, true);
     showJudge(true);
   }
@@ -461,7 +478,7 @@ export function runPage(o) {
     clearTimeout(backTimer);
     if (!handCands.length) backTimer = setTimeout(leaveHand, HAND_IDLE);   // not while a reading waits for ○/×
   };
-  for (const cv of [pad, qpad]) {
+  for (const cv of [pad, qpad]) {   // (either may be absent)
     if (!cv) continue;
     cv.addEventListener('pointerdown', (e) => {
       e.preventDefault();
@@ -480,7 +497,7 @@ export function runPage(o) {
     if (!meta || !status || !strokes.length) return;
     if (busy || drawing) { readTimer = setTimeout(readDrawing, 200); return; }
     busy = true;
-    $('#guesssub').textContent = '読んでいます…';
+    setGuessSub('読んでいます…');
     brainThinking('read');
     worker.postMessage({ type: 'read', img: padImage() });
   }
@@ -511,7 +528,7 @@ export function runPage(o) {
       $('#qans').textContent = '…'; showJudge(false); handCands = [];
       if (fly && fly.hold) fly.release(false);
       $('#verdict').textContent = '?'; $('#verdict').className = 'verdict';
-      $('#guess').firstChild.textContent = '–';
+      setGuess('–');
       $('#status').textContent = '消した。もう一度どうぞ。';
       clearTimeout(backTimer); backTimer = setTimeout(leaveHand, HAND_IDLE);
     }
@@ -519,7 +536,7 @@ export function runPage(o) {
   // the × on whichever box has writing in it
   document.querySelectorAll('.xclear').forEach((b) => b.addEventListener('click', clearDrawing));
   $('#readbtn')?.addEventListener('click', () => { if (strokes.length) { enterHand(); readDrawing(); } });
-  $('#backbtn').addEventListener('click', () => {
+  $('#backbtn')?.addEventListener('click', () => {
     clearTimeout(backTimer); clearTimeout(readTimer);
     strokes = []; redrawPad();
     handWasAuto = true;
@@ -599,9 +616,9 @@ export function runPage(o) {
     {
       lastDrive = m.drive; lastAnswer = m.answer; lastSlots = m.slots;
       lastAllowed = [...Array(unlocked()).keys()];
-      $('#guess').firstChild.textContent = labels[m.answer];
-      $('#guesssub').textContent = `次の候補は「${labels[m.second]}」` +
-        (o.levelName && unlocked() < letters.length ? `（いま読めるのは習った ${unlocked()} 文字の中からだけ）` : '');
+      setGuess(labels[m.answer]);
+      setGuessSub(`次の候補は「${labels[m.second]}」` +
+        (o.levelName && unlocked() < letters.length ? `（いま読めるのは習った ${unlocked()} 文字の中からだけ）` : ''));
       if (hand && strokes.length && !drawing) {    // answer where the questions are, and wait for ○/×
         handCands = lastAllowed.slice().sort((a, b) => m.drive[a] - m.drive[b]).slice(0, 3);
         handK = 0; handSure = Math.min(1, m.margin / 0.03);
@@ -644,6 +661,18 @@ export function runPage(o) {
   }
 
   addEventListener('resize', () => { drawKC(); if (fly) fly.resize(); });
+
+  // phones: the tab bar at the bottom shows one part of the page at a time
+  const tabs = document.querySelectorAll('.tabbar [data-go]');
+  function setTab(tb) {
+    document.body.dataset.tab = tb;
+    tabs.forEach((b) => b.setAttribute('aria-selected', String(b.dataset.go === tb)));
+    scrollTo(0, 0);
+    if (tb === 'record') chart.draw();              // canvases drawn while hidden have no size
+    if (tb === 'about') { drawKC(); drawBars(); }
+    if (tb === 'play' && fly) fly.resize();
+  }
+  tabs.forEach((b) => b.addEventListener('click', () => setTab(b.dataset.go)));
   window.__hand = () => ({ hand, strokes: strokes.length, cands: handCands.map((c) => labels[c]), k: handK, auto, busy });
   $('#legend-test').style.background = COLORS.test;
   $('#legend-run').style.background = COLORS.run;

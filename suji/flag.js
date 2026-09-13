@@ -473,10 +473,15 @@ export class FlagFly {
   resize() {
     if (!this.ready) return;
     const w = this.canvas.clientWidth || 320;
-    const h = Math.round(Math.max(190, Math.min(330, w * 0.62)));
+    // on a phone the fly gets a good share of the screen; elsewhere it follows the width
+    const phone = typeof matchMedia === 'function' && matchMedia('(max-width: 640px)').matches;
+    const h = phone ? Math.round(clamp(innerHeight * 0.42, 240, 460)) : Math.round(Math.max(190, Math.min(330, w * 0.62)));
     this.canvas.style.height = h + 'px';
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
+    // keep the horizontal field of view of a wide panel on narrower screens, or the fly is cropped
+    const ref = 1.9;
+    this.camera.fov = w / h < ref ? 2 * Math.atan(Math.tan(16 * Math.PI / 180) * ref / (w / h)) * 180 / Math.PI : 32;
     this.camera.updateProjectionMatrix();
   }
 
