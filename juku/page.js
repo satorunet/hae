@@ -19,14 +19,19 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
  * @param {number} o.pen             pen width as a fraction of the 48 px drawing
  */
 export function runPage(o) {
-  const worker = new Worker(new URL('./worker.js?v=3', import.meta.url), { type: 'module' });
+  const worker = new Worker(new URL('./worker.js?v=4', import.meta.url), { type: 'module' });
   const letters = o.rows.join('');
   let labels = [...letters], status = null, meta = null, kcXY = null;
   let busy = true, auto = true, quizTimer = null, flyWaits = 0;
   let asked = 0, right = 0; const hist = [];
   let lastDrive = null, lastAnswer = null, lastSlots = null, lastAllowed = null;
   let fly = null;
-  new FlagFly($('#fly')).load().then((f) => { fly = f; window.__fly = f; })
+  new FlagFly($('#fly')).load().then((f) => {
+    fly = f; window.__fly = f;
+    // the stage has its final height now: settle the brain window into its corner (unless it was moved)
+    let saved = null; try { saved = localStorage.getItem('hae-brain-pos'); } catch { /* no storage */ }
+    if (!saved && typeof placeWindow === 'function' && !$('#brainwin').hidden) placeWindow();
+  })
     .catch((e) => { $('#flynote').textContent = '（3D の蠅を読み込めなかった: ' + e.message + '）'; });
   const chart = new RecordChart($('#chart'), $('#charttip'), { levelName: o.levelName });
   // sound: ○ / × / giving up, and the wings while it flies
@@ -218,17 +223,17 @@ export function runPage(o) {
   const SERIES = 90;                              // samples kept for the traces
   const series = [];                              // {pn, kc, mb, mode}
   let heat = null, heatT = 0, rafOn = false;
-  const MODE_TEXT = { idle: 'ふだん（背景入力だけ）', ask: '問題を見ている', read: 'あなたの字を見ている' };
+  const MODE_TEXT = { idle: 'ふだん（背景入力だけ）', ask: '問題を見ている', read: 'あなたの字を見ている', write: '字を書いている（前脚の運動指令）' };
   function setMode(m) {
     bwMode = m;
     const el = $('#bwmode');
-    el.textContent = innerWidth <= 640 ? { idle: 'ふだん', ask: '問題を見ている', read: '字を見ている' }[m] : MODE_TEXT[m];
+    el.textContent = innerWidth <= 640 ? { idle: 'ふだん', ask: '問題を見ている', read: '字を見ている', write: '字を書いている' }[m] : MODE_TEXT[m];
     el.className = 'bwmode ' + m;
     const st = $('#bwstate');                         // compact view: the state where the rates were
     if (st) { st.textContent = MODE_TEXT[m]; st.className = 'bwstate ' + m; }
   }
   function feed(f, mode) {
-    series.push({ pn: f.pn, kc: f.kc, mb: f.mb, mode });
+    series.push({ pn: f.pn, kc: f.kc, mb: f.mb, dn: f.dn || 0, mode });
     if (series.length > SERIES) series.shift();
     if (heat) for (const k of f.slots) heat[k] = 1;
   }
@@ -245,17 +250,10 @@ export function runPage(o) {
   function placeWindow(pos) {
     const win = $('#brainwin'), w = win.offsetWidth || 300, h = win.offsetHeight || 320;
     let p = pos;
-    if (!p) { try { p = JSON.parse(localStorage.getItem('hae-brain-win') || 'null'); } catch { p = null; } }
-    if (!p) {
-      // first time: outside the fly's view, top right - beside the page where there is room,
-      // otherwise in the top-right corner of the screen
-      const panel = $('.flywrap').closest('.panel').getBoundingClientRect();
+    if (!p) { try { p = JSON.parse(localStorage.getItem('hae-brain-pos') || 'null'); } catch { p = null; } }
+    if (!p) {                                      // first time: the bottom-right corner of the fly's view
       const stage = $('.flywrap').getBoundingClientRect();
-      p = innerWidth - panel.right >= w + 24
-        ? { x: panel.right + 16, y: Math.max(8, panel.top) }
-        : innerWidth <= 640
-          ? { x: innerWidth - w - 8, y: Math.max(8, stage.top + 52) }   // phone: under the 🧠 button, on the stage
-          : { x: innerWidth - w - 8, y: 8 };
+      p = { x: Math.min(stage.right, innerWidth) - w - 8, y: stage.bottom - h - 8 };
     }
     const x = Math.min(Math.max(4, p.x), innerWidth - w - 4), y = Math.min(Math.max(4, p.y), innerHeight - 40);
     win.style.left = x + 'px'; win.style.top = y + 'px';
@@ -275,7 +273,7 @@ export function runPage(o) {
     const end = () => {
       if (!drag) return;
       drag = null; win.classList.remove('dragging');
-      try { localStorage.setItem('hae-brain-win', JSON.stringify({ x: parseFloat(win.style.left), y: parseFloat(win.style.top) })); } catch { /* no storage */ }
+      try { localStorage.setItem('hae-brain-pos', JSON.stringify({ x: parseFloat(win.style.left), y: parseFloat(win.style.top) })); } catch { /* no storage */ }
     };
     head.addEventListener('pointerup', end);
     head.addEventListener('pointercancel', end);
@@ -294,6 +292,14 @@ export function runPage(o) {
     addEventListener('resize', () => { if (brainOn) placeWindow({ x: parseFloat(win.style.left), y: parseFloat(win.style.top) }); });
   })();
   $('#brainbtn').addEventListener('click', () => setBrain(!brainOn));
+  // writing on the ground is a movement: tell the brain how hard the front leg is working
+  let motorSent = 0;
+  setInterval(() => {
+    if (!brainOn || !fly) return;
+    const writing = fly.phase === 'writing' && fly.pen;
+    const drive = writing ? (fly.pen.down ? 1 : 0.35) : 0;
+    if (Math.abs(drive - motorSent) > 0.01) { motorSent = drive; worker.postMessage({ type: 'motor', drive }); }
+  }, 100);
 
   // Kenyon cells glowing as they fire, and a rate trace for each layer
   function drawBrainLive(now) {
@@ -325,17 +331,20 @@ export function runPage(o) {
       x.beginPath(); x.arc(px, py, r * (1 + 1.2 * v), 0, 6.2832); x.fill();
     }
     const sec = (meta.chunkMs || 25) / 1000;
-    for (const [key, cells] of [['pn', meta.cells.pn], ['kc', meta.cells.kc], ['mb', meta.cells.mbon]]) {
-      const cv = $('#sp-' + key), cw = cv.clientWidth || 150, ch = cv.clientHeight || 22;
+    for (const [key, cells] of [['pn', meta.cells.pn], ['kc', meta.cells.kc], ['mb', meta.cells.mbon], ['dn', meta.cells.dn || 1]]) {
+      const cv = $('#sp-' + key);
+      if (!cv) continue;
+      const cw = cv.clientWidth || 150, ch = cv.clientHeight || 22;
       if (cv.width !== cw * dpr) { cv.width = cw * dpr; cv.height = ch * dpr; }
       const g = cv.getContext('2d');
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       g.clearRect(0, 0, cw, ch);
       const hz = series.map((f) => f[key] / cells / sec);
-      const top = Math.max(key === 'pn' ? 30 : key === 'kc' ? 4 : 10, ...hz);
+      const top = Math.max(key === 'pn' ? 30 : key === 'kc' ? 4 : key === 'dn' ? 60 : 10, ...hz);
       const step = cw / (SERIES - 1), off = SERIES - series.length;
       series.forEach((f, i) => {                  // shade the moments a picture was in front of it
-        if (f.mode !== 'idle') { g.fillStyle = 'rgba(201,122,31,.22)'; g.fillRect((off + i - 0.5) * step, 0, step + 0.5, ch); }
+        if (f.mode === 'ask' || f.mode === 'read') { g.fillStyle = 'rgba(201,122,31,.22)'; g.fillRect((off + i - 0.5) * step, 0, step + 0.5, ch); }
+        else if (f.mode === 'write') { g.fillStyle = 'rgba(84,217,140,.16)'; g.fillRect((off + i - 0.5) * step, 0, step + 0.5, ch); }
       });
       g.strokeStyle = '#59b7ff'; g.lineWidth = 1.5; g.lineJoin = 'round'; g.beginPath();
       hz.forEach((v, i) => { const px = (off + i) * step, py = ch - 1.5 - (v / top) * (ch - 4); i ? g.lineTo(px, py) : g.moveTo(px, py); });
@@ -658,7 +667,11 @@ export function runPage(o) {
       $('#status').textContent = '準備完了。';
       setAuto(true);
     } else if (m.type === 'tick') {
-      if (brainOn && !replaying) { if (bwMode !== 'idle') setMode('idle'); feed(m, 'idle'); }
+      if (brainOn && !replaying) {
+        const mode = motorSent > 0.01 ? 'write' : 'idle';
+        if (bwMode !== mode) setMode(mode);
+        feed(m, mode);
+      }
     } else if (m.type === 'answered') {
       if (hand) { busy = false; return; }          // a question that was already on its way
       // the question goes up at once; the answer comes after the brain has been watched working on it

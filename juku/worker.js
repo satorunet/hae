@@ -5,7 +5,7 @@
 // Bump the ?v= on flybrain.js and flybrain.wasm together whenever either
 // changes - Cloudflare keeps serving old copies otherwise.
 import { FlyBrain } from '../flybrain/flybrain.js?v=5';
-import { makeReader } from './reader.mjs?v=3';
+import { makeReader } from './reader.mjs?v=4';
 import * as K from '../hiragana/kana.mjs?v=2';
 
 const V = '?v=5';
@@ -16,6 +16,8 @@ let quiz = null;          // the material questions are drawn from
 let allowed = null;       // letters unlocked (hiragana), null = all
 // watching the brain: which population each neuron is in, and a KC's slot
 let kind = null, kcSlot = null, live = false, liveTimer = null, working = false;
+// writing: the front-leg descending neurons, driven with the pen's speed
+let motorIdx = [], motorDrive = 0;
 
 async function gunzipBytes(res) {
   const s = res.body.pipeThrough(new DecompressionStream('gzip'));
@@ -46,9 +48,14 @@ async function init(c) {
   for (const i of R.ALPN) kind[i] = 1;
   R.KC.forEach((i, k) => { kind[i] = 2; kcSlot[i] = k; });
   for (const i of R.MBON) kind[i] = 3;
+  try {
+    const groups = (await (await fetch(new URL('../flybrain/data/groups783.json' + V, HERE))).json()).groups;
+    motorIdx = Object.keys(groups).filter((k) => /^dn:DNg(11|12(_[a-e])?):[LR]$/.test(k)).flatMap((k) => groups[k].idx);
+    for (const i of motorIdx) kind[i] = 4;
+  } catch { /* no motor row then */ }
   try { await refresh(); } catch (e) { post({ type: 'status', status: null, message: e.message }); }
   post({ type: 'ready', labels: R.labels, kc: Uint32Array.from(R.KC), size: R.course.size,
-    cells: { pn: R.ALPN.length, kc: R.KC.length, mbon: R.MBON.length }, chunkMs: R.CHUNK_MS,
+    cells: { pn: R.ALPN.length, kc: R.KC.length, mbon: R.MBON.length, dn: motorIdx.length }, chunkMs: R.CHUNK_MS,
     groups: R.groups.map((g) => ({ name: g.name, cells: g.cells.length, inputs: g.inputs })) });
 }
 
@@ -88,15 +95,16 @@ function question() {
 
 // one slice of simulation, boiled down to what the page draws
 function summarise(r) {
-  let pn = 0, kc = 0, mb = 0;
+  let pn = 0, kc = 0, mb = 0, dn = 0;
   const slots = [];
   for (const i of r.idx) {
     const k = kind[i];
     if (k === 1) pn++;
     else if (k === 2) { kc++; slots.push(kcSlot[i]); }
     else if (k === 3) mb++;
+    else if (k === 4) dn++;
   }
-  return { pn, kc, mb, slots: Uint16Array.from(slots) };
+  return { pn, kc, mb, dn, slots: Uint16Array.from(slots) };
 }
 
 // with the brain window open, the brain keeps running on background input
@@ -104,7 +112,11 @@ function summarise(r) {
 function tick() {
   liveTimer = null;
   if (!live || working) return;
-  const f = summarise(R.idle(R.CHUNK_MS));
+  // the pen moving = the descending neurons that drive the front legs, at a rate that
+  // follows its speed (they send their output down to the ventral nerve cord, which
+  // is not in the brain data - so what shows is the command leaving the brain)
+  const hz = motorDrive > 0.01 ? 30 + 220 * motorDrive : 0;
+  const f = summarise(R.idle(R.CHUNK_MS, 20, { idx: motorIdx, hz }));
   post({ type: 'tick', ...f }, [f.slots.buffer]);
   liveTimer = setTimeout(tick, 100);
 }
@@ -118,6 +130,7 @@ function answer(img) {
 
 self.onmessage = async (e) => {
   const m = e.data;
+  if (m.type === 'motor') { motorDrive = Math.max(0, Math.min(1, +m.drive || 0)); return; }
   if (m.type === 'live') {
     live = m.on;
     if (live && !liveTimer && R) liveTimer = setTimeout(tick, 50);

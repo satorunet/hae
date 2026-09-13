@@ -108,7 +108,7 @@ export async function makeReader({ FlyBrain, base, course, v = '', onProgress })
   const chan = Array.from({ length: npix }, () => []);
   deck.forEach((p, i) => chan[i % npix].push(p));
 
-  let seed = 1, idling = false;
+  let seed = 1, idling = false, extraHz = 0;
   const CHUNK_MS = 25;
 
   /**
@@ -116,13 +116,18 @@ export async function makeReader({ FlyBrain, base, course, v = '', onProgress })
    * independent Poisson input (background, `hz`), and the simulation carries on
    * from where it was. Returns that slice's spikes. Only the pages use this.
    */
-  function idle(ms, hz = 20) {
+  function idle(ms, hz = 20, extra = null) {
     if (!idling) {
       brain.clearStimuli();
       brain.stimulate(ALPN, hz, { byIndex: true });
       brain.setPlasticityParams({ eta: 0, tauTrace: 40, tauDopa: 1e7, gainMin: C.gainMin, gainMax: C.gainMax });
       brain.reset(++seed);
-      idling = true;
+      idling = true; extraHz = 0;
+    }
+    // `extra` = { idx, hz }: more Poisson input on other cells (0 Hz removes it)
+    if (extra && extra.idx.length && Math.abs(extra.hz - extraHz) > 2) {
+      brain.stimulate(extra.idx, extra.hz, { byIndex: true });
+      extraHz = extra.hz;
     }
     return brain.run(ms);
   }
