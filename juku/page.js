@@ -137,7 +137,7 @@ export function runPage(o) {
       hand = false; clearTimeout(backTimer); qpad?.classList.remove('on');
       showJudge(false); handCands = [];
       if (fly && fly.hold) fly.release(false);
-      strokes = []; redrawPad();
+      keepInk = false; strokes = []; redrawPad();
       $('#qsrc').hidden = true;
     }
     auto = on;
@@ -417,7 +417,7 @@ export function runPage(o) {
   function redrawPad() {
     document.querySelectorAll('.xclear').forEach((b) => { b.hidden = !strokes.length; });
     if (pad) paint(pad, false);
-    if (qpad) paint(qpad, !hand);
+    if (qpad) paint(qpad, !hand && !keepInk);
     if (meta && $('#prev')) drawPixels($('#prev'), padImage());
   }
   // Hand mode: the moment someone starts drawing, the quiz stops and the fly
@@ -456,10 +456,13 @@ export function runPage(o) {
     });
     else showJudge(true);
   }
-  function finishHand(msg) {
+  // `keep`: leave the letter up (a right answer stays in view until the next question)
+  let keepInk = false;
+  function finishHand(msg, keep = false) {
     showJudge(false); handCands = [];
     clearTimeout(readTimer);
-    strokes = []; redrawPad();                     // a clean page for the next one
+    keepInk = keep;
+    if (!keep) { strokes = []; redrawPad(); }       // a clean page for the next one
     $('#status').textContent = msg;
   }
   function judge(ok) {
@@ -472,7 +475,7 @@ export function runPage(o) {
       drawHandTally();
       if (fly) fly.release(true);
       recordDrawing(String(handK + 1));
-      finishHand(`○ 第 ${handK + 1} 候補の「${labels[handCands[handK]]}」で正解 — 餌を食べ終わったら出題に戻る。`);
+      finishHand(`○ 第 ${handK + 1} 候補の「${labels[handCands[handK]]}」で正解 — 餌を食べ終わったら出題に戻る。`, true);
       backToQuiz();
       return;
     }
@@ -537,7 +540,7 @@ export function runPage(o) {
   function backToQuiz() {
     clearTimeout(backTimer);
     const back = (tries = 0) => {
-      if (!hand || strokes.length) return;         // they started writing another one
+      if (!hand || (strokes.length && !keepInk)) return;   // they started writing another one
       if (fly && fly.isBusy() && tries < 160) { backTimer = setTimeout(() => back(tries + 1), 250); return; }
       handWasAuto = true; leaveHand();
     };
@@ -564,7 +567,7 @@ export function runPage(o) {
     qpad?.classList.remove('on');
     showJudge(false); handCands = [];
     if (fly && fly.hold) fly.release(false);
-    strokes = []; redrawPad();
+    if (!keepInk) { strokes = []; redrawPad(); }   // a right answer's letter waits for the next question
     $('#qsrc').hidden = true;
     if (handWasAuto) setAuto(true);
   }
@@ -586,7 +589,7 @@ export function runPage(o) {
       cv.setPointerCapture(e.pointerId); drawing = true; clearTimeout(readTimer);
       document.body.classList.add('drawing');
       getSelection?.()?.removeAllRanges();
-      if (!hand) strokes = [];                       // a fresh page for a fresh go
+      if (!hand || keepInk) { strokes = []; keepInk = false; }   // a fresh page for a fresh go
       enterHand();
       showJudge(false); handCands = [];              // the reading is about to change
       clearTimeout(backTimer);
@@ -628,7 +631,7 @@ export function runPage(o) {
   // ------------------------------------------------------------ controls
   $('#autobtn').addEventListener('click', () => setAuto(!auto));
   const clearDrawing = () => {
-    strokes = []; redrawPad(); clearTimeout(readTimer);
+    keepInk = false; strokes = []; redrawPad(); clearTimeout(readTimer);
     if (hand) {
       $('#qans').textContent = '…'; showJudge(false); handCands = [];
       if (fly && fly.hold) fly.release(false);
@@ -693,6 +696,7 @@ export function runPage(o) {
       }
     } else if (m.type === 'answered') {
       if (hand) { busy = false; return; }          // a question that was already on its way
+      if (keepInk) { keepInk = false; strokes = []; redrawPad(); }   // the next question replaces the letter
       // the question goes up at once; the answer comes after the brain has been watched working on it
       drawPixels($('#q'), m.img);
       $('#qtruth').textContent = labels[m.truth];
