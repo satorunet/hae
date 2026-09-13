@@ -1,6 +1,6 @@
 // What /suji/ and /hiragana/ share: the server's record, a copy of the
 // server's fly answering questions in the browser, and a drawing pad.
-import { FlagFly } from '../suji/flag.js?v=26';
+import { FlagFly } from '../suji/flag.js?v=28';
 import { RecordChart, COLORS } from './chart.js?v=3';
 import { normalise } from '../hiragana/kana.mjs?v=2';
 
@@ -17,7 +17,7 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
  * @param {number} o.pen             pen width as a fraction of the 48 px drawing
  */
 export function runPage(o) {
-  const worker = new Worker(new URL('./worker.js?v=2', import.meta.url), { type: 'module' });
+  const worker = new Worker(new URL('./worker.js?v=3', import.meta.url), { type: 'module' });
   const letters = o.rows.join('');
   let labels = [...letters], status = null, meta = null, kcXY = null;
   let busy = true, auto = true, quizTimer = null, flyWaits = 0;
@@ -112,7 +112,7 @@ export function runPage(o) {
       if (o.course === 'suji') $('#qsrc').hidden = true;
     }
     auto = on;
-    $('#autobtn').textContent = on ? '止める' : '自動でまわす';
+    $('#autobtn').textContent = on ? '自動停止' : '自動出題';
     if (!on && quizTimer) { clearTimeout(quizTimer); quizTimer = null; }
     if (on && !busy) nextQuestion(300);
   }
@@ -124,13 +124,18 @@ export function runPage(o) {
       if (busy) { nextQuestion(400, awaitFly); return; }
       if (awaitFly && fly && fly.isBusy() && ++flyWaits < 120) { nextQuestion(250, true); return; }
       flyWaits = 0;
+      if (awaitFly) {                              // the answer is over: a few seconds of being a fly first
+        $('#status').textContent = 'ひと休み — いつもの蠅に戻っている…';
+        nextQuestion(3500 + Math.random() * 3500, false);
+        return;
+      }
       busy = true;
       if (Date.now() - lastRefresh > 60e3) {        // pick up the server's newer brain now and then
         lastRefresh = Date.now();
         worker.postMessage({ type: 'refresh' });
       }
       $('#status').textContent = '出題中…';
-      brainThinking('問題を見ている…');
+      brainThinking('ask');
       worker.postMessage({ type: 'ask' });
     }, delay);
   }
@@ -172,39 +177,146 @@ export function runPage(o) {
   function drawKC() {
     paintKC($('#kc'), 0.36, 10);
     $('#pct').textContent = lastSlots && kcXY ? (100 * lastSlots.length / (kcXY.length / 2)).toFixed(1) + '%' : '–';
-    drawBrainPop();
+    drawBrainBars();
   }
 
-  // the brain overlay in the corner of the fly's view, behind the 🧠 button
-  let brainOn = false;
+  // ------------------------------------------------------------ the brain window
+  // A small window you can drag anywhere. While it is open the brain keeps
+  // running between questions on weak background input, so you can watch the
+  // difference: projection neurons busy, Kenyon cells almost silent - until a
+  // picture arrives and a sparse set of them lights up. Each question's 400 ms
+  // is replayed in slow motion before the fly gives its answer.
+  let brainOn = false, replaying = false, bwMode = 'idle';
   try { brainOn = localStorage.getItem('hae-brain-pop') === '1'; } catch { /* no storage */ }
+  const SERIES = 90;                              // samples kept for the traces
+  const series = [];                              // {pn, kc, mb, mode}
+  let heat = null, heatT = 0, rafOn = false;
+  const MODE_TEXT = { idle: 'ふだん（背景入力だけ）', ask: '問題を見ている', read: 'あなたの字を見ている' };
+  function setMode(m) {
+    bwMode = m;
+    const el = $('#bwmode');
+    el.textContent = MODE_TEXT[m]; el.className = 'bwmode ' + m;
+  }
+  function feed(f, mode) {
+    series.push({ pn: f.pn, kc: f.kc, mb: f.mb, mode });
+    if (series.length > SERIES) series.shift();
+    if (heat) for (const k of f.slots) heat[k] = 1;
+  }
   function setBrain(on) {
     brainOn = on;
     try { localStorage.setItem('hae-brain-pop', on ? '1' : '0'); } catch { /* no storage */ }
     $('#brainbtn').setAttribute('aria-pressed', String(on));
-    $('#brainpop').hidden = !on;
-    drawBrainPop();
+    const win = $('#brainwin');
+    win.hidden = !on;
+    if (on) { placeWindow(); drawBrainBars(); if (!rafOn) { rafOn = true; requestAnimationFrame(drawBrainLive); } }
+    worker.postMessage({ type: 'live', on });
   }
-  function brainThinking(what) {
-    if (!brainOn) return;
-    $('#bpwhat').textContent = what;
-    $('#brainpop').classList.add('busy');
+  // where the window sits: where it was left, else over the top-right of the fly's view
+  function placeWindow(pos) {
+    const win = $('#brainwin'), w = win.offsetWidth || 300, h = win.offsetHeight || 320;
+    let p = pos;
+    if (!p) { try { p = JSON.parse(localStorage.getItem('hae-brain-win') || 'null'); } catch { p = null; } }
+    if (!p) { const r = $('.flywrap').getBoundingClientRect(); p = { x: r.right - w - 8, y: Math.max(8, r.top + 8) }; }
+    const x = Math.min(Math.max(4, p.x), innerWidth - w - 4), y = Math.min(Math.max(4, p.y), innerHeight - 40);
+    win.style.left = x + 'px'; win.style.top = y + 'px';
+    return { x, y };
   }
-  function drawBrainPop() {
+  (() => {                                        // dragging by the title bar
+    const head = $('#bwhead'), win = $('#brainwin');
+    let drag = null;
+    head.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('button')) return;
+      head.setPointerCapture(e.pointerId);
+      const r = win.getBoundingClientRect();
+      drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+      win.classList.add('dragging');
+    });
+    head.addEventListener('pointermove', (e) => { if (drag) placeWindow({ x: e.clientX - drag.dx, y: e.clientY - drag.dy }); });
+    const end = () => {
+      if (!drag) return;
+      drag = null; win.classList.remove('dragging');
+      try { localStorage.setItem('hae-brain-win', JSON.stringify({ x: parseFloat(win.style.left), y: parseFloat(win.style.top) })); } catch { /* no storage */ }
+    };
+    head.addEventListener('pointerup', end);
+    head.addEventListener('pointercancel', end);
+    $('#bwclose').addEventListener('click', () => setBrain(false));
+    addEventListener('resize', () => { if (brainOn) placeWindow({ x: parseFloat(win.style.left), y: parseFloat(win.style.top) }); });
+  })();
+  $('#brainbtn').addEventListener('click', () => setBrain(!brainOn));
+
+  // Kenyon cells glowing as they fire, and a rate trace for each layer
+  function drawBrainLive(now) {
+    if (!brainOn) { rafOn = false; return; }
+    requestAnimationFrame(drawBrainLive);
+    if (!meta || !kcXY) return;
+    const dt = Math.min(0.1, (now - (heatT || now)) / 1000); heatT = now;
+    const c = $('#kcmini'), dpr = Math.min(2, devicePixelRatio || 1);
+    const w = c.clientWidth || 280, h = Math.round(w * 0.36);
+    if (c.width !== w * dpr) { c.width = w * dpr; c.height = h * dpr; c.style.height = h + 'px'; }
+    const x = c.getContext('2d');
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    x.fillStyle = '#070a0d'; x.fillRect(0, 0, w, h);
+    const n = kcXY.length / 2, pad = 3, r = Math.max(0.6, w / 420);
+    if (!heat) heat = new Float32Array(n);
+    const decay = Math.exp(-dt / 0.35);
+    x.fillStyle = '#242c35'; x.beginPath();
+    for (let k = 0; k < n; k++) {
+      const px = pad + kcXY[2 * k] * (w - 2 * pad), py = pad + kcXY[2 * k + 1] * (h - 2 * pad);
+      x.moveTo(px + r, py); x.arc(px, py, r, 0, 6.2832);
+    }
+    x.fill();
+    for (let k = 0; k < n; k++) {
+      const v = heat[k];
+      if (v < 0.03) continue;
+      heat[k] = v * decay;
+      const px = pad + kcXY[2 * k] * (w - 2 * pad), py = pad + kcXY[2 * k + 1] * (h - 2 * pad);
+      x.fillStyle = `rgba(120,200,255,${v.toFixed(3)})`;
+      x.beginPath(); x.arc(px, py, r * (1 + 1.2 * v), 0, 6.2832); x.fill();
+    }
+    const sec = (meta.chunkMs || 25) / 1000;
+    for (const [key, cells] of [['pn', meta.cells.pn], ['kc', meta.cells.kc], ['mb', meta.cells.mbon]]) {
+      const cv = $('#sp-' + key), cw = cv.clientWidth || 150, ch = cv.clientHeight || 22;
+      if (cv.width !== cw * dpr) { cv.width = cw * dpr; cv.height = ch * dpr; }
+      const g = cv.getContext('2d');
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, cw, ch);
+      const hz = series.map((f) => f[key] / cells / sec);
+      const top = Math.max(key === 'pn' ? 30 : key === 'kc' ? 4 : 10, ...hz);
+      const step = cw / (SERIES - 1), off = SERIES - series.length;
+      series.forEach((f, i) => {                  // shade the moments a picture was in front of it
+        if (f.mode !== 'idle') { g.fillStyle = 'rgba(201,122,31,.22)'; g.fillRect((off + i - 0.5) * step, 0, step + 0.5, ch); }
+      });
+      g.strokeStyle = '#59b7ff'; g.lineWidth = 1.5; g.lineJoin = 'round'; g.beginPath();
+      hz.forEach((v, i) => { const px = (off + i) * step, py = ch - 1.5 - (v / top) * (ch - 4); i ? g.lineTo(px, py) : g.moveTo(px, py); });
+      g.stroke();
+      $('#hz-' + key).textContent = hz.length ? `${hz[hz.length - 1] < 10 ? hz[hz.length - 1].toFixed(1) : Math.round(hz[hz.length - 1])} Hz` : '–';
+    }
+  }
+  // the last decision: the compartments with the weakest MBON input
+  function drawBrainBars() {
     if (!brainOn || !meta) return;
-    $('#brainpop').classList.remove('busy');
-    const narrow = ($('.flywrap').clientWidth || 600) < 520;
-    paintKC($('#kcmini'), 0.36, 3);
+    const narrow = innerWidth < 520;
     $('#kcminipct').textContent = lastSlots && kcXY ? `${lastSlots.length.toLocaleString()} 個 ${(100 * lastSlots.length / (kcXY.length / 2)).toFixed(1)}%` : '–';
-    if (!lastDrive || !lastAllowed) { $('#bpbars').innerHTML = ''; $('#bpwhat').textContent = 'まだ何も見ていない'; return; }
+    if (!lastDrive || !lastAllowed) { $('#bpbars').innerHTML = ''; return; }
     const cand = lastAllowed.map((c) => [lastDrive[c], c]).sort((a, b) => a[0] - b[0]).slice(0, narrow ? 3 : 5);
     const lo = cand[0][0], hi = Math.max(...lastAllowed.map((c) => lastDrive[c])), span = (hi - lo) || 1;
-    $('#bpwhat').textContent = narrow ? '区画への入力が弱い順' : 'MBON 区画への入力（いちばん弱い区画が答え）';
     $('#bpbars').innerHTML = cand.map(([v, c]) => `<div class="bprow"><b>${esc(labels[c])}</b>` +
       `<span class="bpbar"><i class="${c === lastAnswer ? 'win' : ''}" style="width:${(100 * (hi - v) / span).toFixed(0)}%"></i></span>` +
       `<em>${(100 * v).toFixed(1)}</em></div>`).join('');
   }
-  $('#brainbtn').addEventListener('click', () => setBrain(!brainOn));
+  // play a question's slices at 60 ms each, then carry on
+  function replay(frames, mode, done) {
+    if (!brainOn || !frames?.length) { done(); return; }
+    replaying = true; setMode(mode);
+    let i = 0;
+    const next = () => {
+      if (i < frames.length && brainOn) { feed(frames[i++], mode); setTimeout(next, 60); return; }
+      replaying = false; setMode('idle'); done();
+    };
+    next();
+  }
+  function brainThinking(mode) { if (brainOn) setMode(mode); }
+  setMode('idle');
   setBrain(brainOn);
 
   // ------------------------------------------------------------ drawing pad
@@ -228,6 +340,7 @@ export function runPage(o) {
     }
   }
   function redrawPad() {
+    document.querySelectorAll('.xclear').forEach((b) => { b.hidden = !strokes.length; });
     paint(pad, false);
     if (qpad) paint(qpad, !hand);
     if (meta) drawPixels($('#prev'), padImage());
@@ -359,7 +472,7 @@ export function runPage(o) {
     if (busy || drawing) { readTimer = setTimeout(readDrawing, 200); return; }
     busy = true;
     $('#guesssub').textContent = '読んでいます…';
-    brainThinking('あなたの字を見ている…');
+    brainThinking('read');
     worker.postMessage({ type: 'read', img: padImage() });
   }
   // the strokes at 48 x 48 with a pen about as thick as a font's, then the
@@ -383,7 +496,6 @@ export function runPage(o) {
 
   // ------------------------------------------------------------ controls
   $('#autobtn').addEventListener('click', () => setAuto(!auto));
-  $('#askbtn').addEventListener('click', () => { if (auto) setAuto(false); nextQuestion(0); });
   const clearDrawing = () => {
     strokes = []; redrawPad(); clearTimeout(readTimer);
     if (hand) {
@@ -395,8 +507,8 @@ export function runPage(o) {
       clearTimeout(backTimer); backTimer = setTimeout(leaveHand, HAND_IDLE);
     }
   };
-  $('#clearbtn').addEventListener('click', clearDrawing);
-  $('#qclear')?.addEventListener('click', clearDrawing);
+  // the × on whichever box has writing in it
+  document.querySelectorAll('.xclear').forEach((b) => b.addEventListener('click', clearDrawing));
   $('#readbtn')?.addEventListener('click', () => { if (strokes.length) { enterHand(); readDrawing(); } });
   $('#backbtn').addEventListener('click', () => {
     clearTimeout(backTimer); clearTimeout(readTimer);
@@ -412,6 +524,12 @@ export function runPage(o) {
     if (m.type === 'progress') {
       $('#status').textContent = m.phase === 'material' ? '問題の素材を読み込んでいます…'
         : m.total ? `脳を読み込んでいます… ${(100 * m.loaded / m.total).toFixed(0)}%` : '脳を展開しています…';
+      // the download is most of the wait; unpacking and wiring the rest
+      const total = m.total || 29901431;
+      if (m.phase === 'download') loadBar(0.82 * Math.min(1, m.loaded / total), `脳を読み込み中 ${(m.loaded / 1e6).toFixed(1)} / ${(total / 1e6).toFixed(0)} MB`);
+      else if (m.phase === 'decompress') loadBar(0.86, '脳を展開中…');
+      else if (m.phase === 'ready') loadBar(0.9, 'キノコ体の配線を作っています…');
+      else if (m.phase === 'material') loadBar(0.95, '問題の素材とサーバの学習結果を読み込み中…');
     } else if (m.type === 'error') {
       $('#status').textContent = `エラー（${m.during}）: ${m.message}`;
       busy = false;
@@ -427,6 +545,7 @@ export function runPage(o) {
       if (first && meta) { busy = false; setAuto(auto); }
       if (m.loaded) $('#brainnote').textContent = `このページの蠅 = サーバの蠅の、練習 ${m.status.practised.toLocaleString()} 枚時点のコピー`;
     } else if (m.type === 'ready') {
+      loadBar(1, '準備完了');
       meta = m; labels = m.labels;
       kcXY = await kcPositions(m.kc);
       drawKC(); drawBars(); redrawPad(); drawTally();
@@ -435,13 +554,27 @@ export function runPage(o) {
       busy = false;
       $('#status').textContent = '準備完了。';
       setAuto(true);
+    } else if (m.type === 'tick') {
+      if (brainOn && !replaying) { if (bwMode !== 'idle') setMode('idle'); feed(m, 'idle'); }
     } else if (m.type === 'answered') {
       if (hand) { busy = false; return; }          // a question that was already on its way
-      lastDrive = m.drive; lastAnswer = m.answer; lastSlots = m.slots;
-      lastAllowed = [...Array(unlocked()).keys()];
+      // the question goes up at once; the answer comes after the brain has been watched working on it
       drawPixels($('#q'), m.img);
       $('#qtruth').textContent = labels[m.truth];
       $('#qsrc').textContent = m.source;
+      $('#qans').textContent = '…';
+      $('#verdict').textContent = '–'; $('#verdict').className = 'verdict';
+      if (brainOn) $('#status').textContent = '問題を見ている…';
+      replay(m.frames, 'ask', () => revealAnswer(m));
+    } else if (m.type === 'readout') {
+      replay(m.frames, 'read', () => revealReading(m));
+    }
+  };
+
+  function revealAnswer(m) {
+    {
+      lastDrive = m.drive; lastAnswer = m.answer; lastSlots = m.slots;
+      lastAllowed = [...Array(unlocked()).keys()];
       const ok = m.answer === m.truth;
       asked++; if (ok) right++; hist.push(ok); drawTally();
       $('#qans').textContent = labels[m.answer];
@@ -452,7 +585,10 @@ export function runPage(o) {
       $('#status').textContent = (ok ? '正解。餌が出る。' : `不正解 — 本当は「${labels[m.truth]}」。`) +
         `次の候補は「${labels[m.second]}」`;
       if (auto) nextQuestion(600, true);
-    } else if (m.type === 'readout') {
+    }
+  }
+  function revealReading(m) {
+    {
       lastDrive = m.drive; lastAnswer = m.answer; lastSlots = m.slots;
       lastAllowed = [...Array(unlocked()).keys()];
       $('#guess').firstChild.textContent = labels[m.answer];
@@ -469,7 +605,17 @@ export function runPage(o) {
       drawBars(); drawKC();
       busy = false;
     }
-  };
+  }
+
+  // the loading bar over the fly's view
+  function loadBar(f, text) {
+    const el = $('#loadbar');
+    if (!el) return;
+    el.hidden = false;
+    el.querySelector('i').style.width = `${(100 * f).toFixed(1)}%`;
+    el.querySelector('span').textContent = text;
+    if (f >= 1) setTimeout(() => { el.classList.add('done'); setTimeout(() => { el.hidden = true; }, 600); }, 400);
+  }
 
   async function kcPositions(kcIdx) {
     const res = await fetch(new URL('../flybrain/data/pos783.bin.gz?v=1', import.meta.url));

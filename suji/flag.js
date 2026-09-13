@@ -32,7 +32,9 @@ const CAM_OFF = 1.05;              // the camera sits this far round from the fl
 const POSE_TARGETS = {
   groom: { f: [0.62, 0.28, 0.16] },                             // start of a head sweep
   rub: { f: [0.74, 0.02, -0.46] },                              // tarsi rubbed together
+  tuck: { f: [0.5, 0.28, -0.62], m: [-0.5, 0.42, -0.9], h: [-1.45, 0.3, -0.82] },   // folded up in flight (test03)
 };
+const WINGBEAT = 210;              // Hz, as in test03
 
 export class FlagFly {
   constructor(canvas) {
@@ -60,6 +62,9 @@ export class FlagFly {
     this.jerk = new HeadJerk();    // puzzling over a wrong answer, or just weighing something up
     this.jerkBlocks = false;       // only the puzzling holds up the quiz
     this.feedW = 0;                // 0..1, eased: how far into its eating posture
+    this.fl = null;                // a short flight in progress (see startFlight)
+    this.alt = 0;                  // height above the ground, mm
+    this.wingOpen = 0; this.flap = 0; this.wingPh = 0; this.tuckW = 0;
     this.pen = null;               // the letter being written (see planWriting)
     this.pending = null;           // a letter waiting for the previous flag to come down
     this.cockT = rnd(3, 8);        // next idle cock of the head
@@ -68,7 +73,7 @@ export class FlagFly {
   }
 
   /** True while an answer is still playing out, so the page can wait for it. */
-  isBusy() { return this.phase !== 'idle' || (this.jerkBlocks && this.jerk.active); }
+  isBusy() { return this.phase !== 'idle' || !!this.fl || (this.jerkBlocks && this.jerk.active); }
 
   /** Told it was wrong: two quick cocks of the head, one way then the other, as if thinking. */
   puzzle() { this.jerk.start(2); this.jerkBlocks = true; }
@@ -218,6 +223,11 @@ export class FlagFly {
    * release(). If a flag is already up it comes down first.
    */
   show(digit, sure = 1, correct = false, hold = false) {
+    if (this.fl) {                 // in the air: come down first, then answer
+      this.fl.hurry = true;
+      this.afterLand = () => this.show(digit, sure, correct, hold);
+      return;
+    }
     // it cocks its head as it answers - more often when it is unsure
     if (Math.random() < 0.45 + 0.4 * (1 - clamp(sure, 0, 1))) this.cock(0.45 + 0.3 * Math.random());
     this.hold = !!hold;
@@ -294,8 +304,51 @@ export class FlagFly {
     if (r < 0.30) this.setAct('rub', rnd(1.4, 3.2));         // washing its hands
     else if (r < 0.52) this.setAct('walk', rnd(2.0, 4.5));
     else if (r < 0.70) this.setAct('groom', rnd(1.6, 3.4));  // sweeping its head
-    else if (r < 0.86) this.setAct('feed', rnd(1.6, 3.2));   // working its mouthparts
+    else if (r < 0.80) this.setAct('feed', rnd(1.6, 3.2));   // working its mouthparts
+    else if (r < 0.92 && this.t > 4) this.startFlight();     // a hop into the air and down somewhere else
     else this.setAct('stand', rnd(0.8, 2.2));
+  }
+
+  // Take-off, a short flight to another spot, landing. Wing strokes as in
+  // test03 (210 Hz, blurred), legs folded up in the air and reaching out for
+  // the landing. Hand-made, like all flight on this site: flygym has none.
+  startFlight() {
+    const ang = rnd(0, TAU), d = rnd(1.4, 2.8);
+    let x1 = this.x + Math.cos(ang) * d, y1 = this.y + Math.sin(ang) * d;
+    const rr = Math.hypot(x1, y1);
+    if (rr > ROAM) { x1 *= ROAM / rr; y1 *= ROAM / rr; }
+    this.fl = { t: 0, x0: this.x, y0: this.y, x1, y1, h: rnd(1.2, 2.6), T: rnd(1.8, 3.2), yaw1: this.yaw + rnd(-1.6, 1.6) };
+    this.setAct('fly', 99);
+  }
+  stepFlight(dt) {
+    const F = this.fl;
+    if (F.hurry && F.t < F.T - 0.6) F.T = Math.max(F.t + 0.6, 0.9);   // asked a question: cut it short
+    F.t += dt;
+    const T = F.T, t = F.t;
+    // height: a crouch, a jump, cruise with a little bob, a flare onto the ground
+    const up = ease(clamp((t - 0.18) / 0.35, 0, 1)), down = ease(clamp((T - t) / 0.45, 0, 1));
+    const crouch = t < 0.18 ? -0.08 * Math.sin(Math.PI * t / 0.18) : 0;
+    this.alt = crouch + F.h * Math.min(up, down) + 0.06 * Math.sin(t * 11) * Math.min(up, down);
+    // across the ground
+    const u = ease(clamp((t - 0.3) / Math.max(0.2, T - 0.8), 0, 1));
+    const px = this.x, py = this.y;
+    this.x = F.x0 + (F.x1 - F.x0) * u;
+    this.y = F.y0 + (F.y1 - F.y0) * u;
+    const vx = (this.x - px) / Math.max(dt, 1e-3), vy = (this.y - py) / Math.max(dt, 1e-3);
+    if (Math.hypot(vx, vy) > 0.3) this.yaw += wrap(Math.atan2(vy, vx) - this.yaw) * Math.min(1, dt * 6);
+    else if (t > T - 0.5) this.yaw += wrap(F.yaw1 - this.yaw) * Math.min(1, dt * 3);
+    this.flySpeed = Math.hypot(vx, vy);
+    // wings open before the jump, beat through the flight, fold after touch-down
+    const inAir = t > 0.1 && t < T;
+    this.wingOpen = approach(this.wingOpen, t < T ? 1 : 0, dt, t < T ? 0.04 : 0.08);
+    this.flap = approach(this.flap, inAir ? 1 : 0, dt, 0.03);
+    this.tuckW = approach(this.tuckW, t > 0.35 && t < T - 0.4 ? 1 : 0, dt, 0.06);
+    if (t >= T + 0.25) {
+      this.fl = null; this.alt = 0; this.flySpeed = 0;
+      this.setAct('stand', rnd(0.6, 1.4));
+      if (this.afterLand) { const go = this.afterLand; this.afterLand = null; go(); }
+      else if (Math.random() < 0.5) this.cock(0.5);
+    }
   }
 
   // the trail the writing leg leaves: flat quads on the ground, one per step of the tip
@@ -369,6 +422,33 @@ export class FlagFly {
     const a = pts[i - 1], b = pts[i], u = clamp((P.t - T[i - 1]) / Math.max(1e-6, T[i] - T[i - 1]), 0, 1);
     P.down = !!(a[3] && b[3]);
     return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u];
+  }
+
+  // wing strokes, the same kinematics as test03, with blurred copies while beating
+  poseWings() {
+    const body = this.body, A = 1.3, phi0 = -0.12, alpha = 0.7, beta = 0.8, fk = this.flap;
+    const q = this._wq ??= new THREE.Quaternion(), qg = this._wqg ??= new THREE.Quaternion();
+    const stroke = (ph) => [
+      lerp(phi0 - A, phi0 + A * Math.sin(ph), fk),
+      0.12 * Math.sin(2 * ph) * fk,
+      lerp(Math.PI / 2, Math.PI / 2 - (Math.PI / 2 - alpha) * Math.tanh(2.5 * Math.cos(ph)) / Math.tanh(2.5), fk),
+    ];
+    const blur = fk, ghost = blur > 0.02 && this.wingOpen > 0.8 && fk > 0.5;
+    body.wingMat.opacity = 1 - 0.62 * (ghost ? blur : 0);
+    body.ghostMat.opacity = 0.075 * blur;
+    for (const w of body.wings) {
+      const [phi, dev, gam] = stroke(this.wingPh);
+      body.wingQuat(w, phi, dev, gam, beta, q);
+      w.obj.quaternion.copy(w.wing.qRest).slerp(q, this.wingOpen);
+      w.wing.ghosts.forEach((g, k) => {
+        g.visible = ghost;
+        if (!ghost) return;
+        const [p2, d2, g2] = stroke(this.wingPh + (k + 0.5) / w.wing.ghosts.length * TAU);
+        body.wingQuat(w, p2, d2, g2, beta, qg);
+        g.quaternion.copy(w.wing.qRest).slerp(qg, this.wingOpen);
+      });
+    }
+    this._wingsOut = this.wingOpen > 0.002;
   }
 
   dropFood() {
@@ -449,7 +529,7 @@ export class FlagFly {
     const writing = this.phase === 'writing' || this.phase === 'showing';
     const answering = holding || this.phase === 'toFood' || feeding || writing;
     this.actT -= dt;
-    if (!answering && this.actT <= 0) this.chooseAct();
+    if (!answering && !this.fl && this.actT <= 0) this.chooseAct();
 
     const W = this.w;
     const grooming = this.act === 'groom' && !answering;
@@ -467,8 +547,16 @@ export class FlagFly {
     if (rubbing) this.rubPh += dt * TAU * 6.5;
     this.head = approach(this.head, answering || this.act === 'walk' ? 0 : Math.sin(this.t * 0.55) * 0.35, dt, 0.35);
 
+    // ---------------------------------------------------------- flying
+    if (this.fl) this.stepFlight(dt);
+    else {
+      this.tuckW = approach(this.tuckW, 0, dt, 0.06); this.flap = approach(this.flap, 0, dt, 0.03);
+      this.wingOpen = approach(this.wingOpen, 0, dt, 0.08);
+    }
+    if (this.flap > 0.01) this.wingPh += dt * TAU * WINGBEAT;
+
     // ---------------------------------------------------------- walking
-    const wantWalk = (this.act === 'walk' && !answering) || steer != null;
+    const wantWalk = !this.fl && ((this.act === 'walk' && !answering) || steer != null);
     if (steer != null) this.turn = wrap(steer - this.yaw);
     const turn = wantWalk ? clamp(this.turn * 1.1, -0.85, 0.85) : 0;
     this.dL = approach(this.dL, wantWalk ? 1 - Math.max(0, turn) : 0, dt, 0.18);
@@ -513,6 +601,7 @@ export class FlagFly {
         this.ikRub[leg] = sol; mix(sol, W.rub);
       } else this.ikRub[leg] = null;
       if (!front) a[0] += Math.sin(this.t * 1.7 + i) * 0.012 * (1 - Math.max(this.dL, this.dR));
+      mix(this.poses[leg].tuck, this.tuckW);        // folded up in flight
       this.body.setLeg(leg, a);
       if (front && holding) {                            // the grip wins over everything
         const sgn = leg[0] === 'l' ? 1 : -1, d = this.downTip[leg];
@@ -604,11 +693,15 @@ export class FlagFly {
     const dip = 0.16 * this.feedW;
     const q = this._q ??= new THREE.Quaternion(), q2 = this._q2 ??= new THREE.Quaternion();
     q.setFromAxisAngle(AZ, this.yaw);
-    q2.setFromAxisAngle(AY, -0.30 * k - 0.06 * W.groom + dip);
+    const pitchFly = this.fl ? 0.1 * clamp((this.flySpeed || 0) / 3, 0, 1) - 0.12 * this.flap : 0;   // nose down to go, tail down to hover
+    q2.setFromAxisAngle(AY, -0.30 * k - 0.06 * W.groom + dip + pitchFly);
     this.body.root.quaternion.copy(q).multiply(q2);
     this.body.root.position.set(this.x, this.y,
-      this.z0 + breathe * (1 - this.feedW) + 0.45 * k - 0.06 * W.groom - 0.05 * this.feedW);
+      this.z0 + this.alt + breathe * (1 - this.feedW) + 0.45 * k - 0.06 * W.groom - 0.05 * this.feedW);
+    jset('c_thorax-c_abdomen12-pitch', -0.12 * this.tuckW);
+    for (const sd of ['l', 'r']) jset(`c_thorax-${sd}_haltere-pitch`, this.flap * 0.9 * Math.sin(this.wingPh + Math.PI));
     this.body.update();
+    if (this.wingOpen > 0.002 || this._wingsOut) this.poseWings();
 
     // the ink comes off the real tip of the leg, whenever it touches the ground
     if (this.phase === 'writing') {
@@ -655,11 +748,11 @@ export class FlagFly {
     // while it writes and shows the letter, the camera climbs to look down on the page
     this.writeW = approach(this.writeW || 0, writing ? 1 : 0, dt, 0.5);
     const vw = this.writeW;
-    this.look.z += (0.8 + 1.7 * k - 0.6 * vw - this.look.z) * Math.min(1, dt * 3);
+    this.look.z += (0.8 + 1.7 * k - 0.6 * vw + 0.8 * this.alt - this.look.z) * Math.min(1, dt * 3);
     this.camAng += wrap(this.yaw + CAM_OFF - this.camAng) * Math.min(1, dt * 1.4);
     const r = 5.8 + 1.2 * k + wide - 2.0 * vw;
     this.camera.position.set(this.look.x + Math.cos(this.camAng) * r,
-      this.look.y + Math.sin(this.camAng) * r, 1.5 + 1.3 * k + 3.4 * vw);
+      this.look.y + Math.sin(this.camAng) * r, 1.5 + 1.3 * k + 3.4 * vw + 0.9 * this.alt);
     this.camera.lookAt(this.look);
     // the key light rides with the camera, so the fly is never left backlit
     this.sun.position.set(this.look.x + Math.cos(this.camAng + 0.8) * 9,

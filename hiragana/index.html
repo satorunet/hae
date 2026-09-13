@@ -63,22 +63,40 @@
   .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.76rem;color:var(--dim);margin-top:8px}
   /* quiz */
   .flywrap{position:relative}
+  .loadbar{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);width:min(78%,420px);padding:8px 12px 10px;
+    background:rgba(9,12,16,.82);border:1px solid #2b3642;border-radius:9px;font-size:.74rem;color:#c3cfdb;transition:opacity .5s}
+  .loadbar[hidden]{display:none}
+  .loadbar.done{opacity:0}
+  .lbtrack{height:7px;margin-top:6px;border-radius:4px;background:#1f272f;overflow:hidden}
+  .lbtrack i{display:block;height:100%;width:0;border-radius:4px;background:#3a9be6;transition:width .25s}
+  .qbox[hidden]{display:none}
   .brainbtn{position:absolute;top:8px;right:8px;font-size:.76rem;padding:5px 10px;border-radius:7px;
     background:rgba(13,16,20,.72);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
   .brainbtn[aria-pressed="true"]{border-color:#3a9be6;color:#d4ecff}
-  .brainpop{position:absolute;top:40px;right:8px;width:min(46%,250px);background:rgba(9,12,16,.86);
-    border:1px solid #2b3642;border-radius:8px;padding:6px 7px 5px;font-size:.64rem;line-height:1.3;color:#9fb0c0;
-    pointer-events:none}
-  .brainpop[hidden]{display:none}
-  .brainpop.busy #kcmini,.brainpop.busy #bpbars{opacity:.35}
+  .bwin{position:fixed;z-index:50;width:min(300px,calc(100vw - 16px));background:rgba(10,13,17,.94);
+    border:1px solid #33404d;border-radius:9px;box-shadow:0 10px 30px rgba(0,0,0,.5);font-size:.68rem;line-height:1.35;color:#9fb0c0;
+    -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+  .bwin[hidden]{display:none}
+  .bwin.dragging{opacity:.9;box-shadow:0 14px 40px rgba(0,0,0,.6)}
+  .bwhead{display:flex;align-items:center;gap:6px;padding:5px 5px 5px 9px;cursor:move;touch-action:none;user-select:none;
+    -webkit-user-select:none;border-bottom:1px solid #222b34;background:#131920;border-radius:9px 9px 0 0}
+  .bwtitle{font-weight:600;color:#dbe5ee;font-size:.74rem}
+  .bwmode{flex:1;font-size:.64rem;padding:1px 6px;border-radius:9px;background:#1c242c;color:#9fb0c0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bwmode.ask,.bwmode.read{background:#3a2a14;color:#ffcf8a}
+  .bwclose{font-size:.9rem;line-height:1;padding:3px 8px;border-radius:6px;background:transparent;border-color:transparent}
+  .bwbody{padding:7px 8px 7px}
   #kcmini{display:block;width:100%;height:auto;border-radius:4px;background:#070a0d}
-  .bpline{margin:4px 0 3px}.bpline b{color:#d4ecff;font-weight:600}
-  #bpwhat{display:block;color:#8a97a6;margin-top:1px}
+  .bwrow{display:flex;align-items:center;gap:6px;margin-top:3px}
+  .bwrow span{width:6.4em;white-space:nowrap;color:#8a97a6}
+  .bwrow canvas{flex:1;height:22px;min-width:0;background:#0b0f13;border-radius:3px}
+  .bwrow em{font-style:normal;width:3.6em;text-align:right;font-variant-numeric:tabular-nums;color:#c3cfdb}
+  .bpline{margin:6px 0 2px}.bpline b{color:#d4ecff;font-weight:600}
   .bprow{display:flex;align-items:center;gap:5px;margin-top:2px}
   .bprow b{width:1.3em;color:#e6edf3;font-size:.8rem;text-align:center;font-weight:600}
   .bpbar{flex:1;height:6px;border-radius:3px;background:#1f272f;overflow:hidden}
   .bpbar i{display:block;height:100%;border-radius:3px;background:#3b4a5a}.bpbar i.win{background:#59b7ff}
   .bprow em{font-style:normal;width:2.6em;text-align:right;font-variant-numeric:tabular-nums;color:#7d8a99}
+  .bwnote{margin-top:6px;color:#6b7887;font-size:.6rem}
   #fly{display:block;width:100%;height:230px;border-radius:8px;background:radial-gradient(120% 100% at 50% 20%,#1a212a,#0a0d11)}
   .quizrow{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:14px}
   .qbox{text-align:center;flex:0 0 auto}
@@ -95,7 +113,11 @@
   .judge .jno{border-color:#6b2f35;color:#ffd0d0}.judge .jno:hover:not(:disabled){border-color:var(--hot)}
   .judge button:disabled{opacity:.4;cursor:default}
   .qhint{font-size:.68rem;color:#6b7887;margin-top:4px}
-  .qclear{font-size:.74rem;padding:3px 10px;margin-left:4px}
+  .padwrap{position:relative;flex:0 0 auto;max-width:100%}
+  .xclear{position:absolute;top:5px;right:5px;z-index:3;width:28px;height:28px;padding:0;border-radius:50%;
+    font-size:1.05rem;line-height:1;background:rgba(20,26,33,.85);border-color:#3a4552;color:#dbe5ee}
+  .xclear[hidden]{display:none}
+  .qdraw .xclear{top:4px;right:4px;width:24px;height:24px;font-size:.95rem}
   #q{image-rendering:pixelated;width:132px;height:132px;background:#07090c;border:1px solid var(--line);border-radius:8px;display:block}
   .qlab{font-size:.74rem;color:var(--dim);margin-top:6px;letter-spacing:.04em;max-width:132px}
   .qlab b{color:#c3cfdb;font-size:1.05rem}
@@ -111,7 +133,7 @@
   .hist i.ok{background:var(--good)}.hist i.no{background:var(--hot)}
   /* pad */
   .padrow{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
-  #pad{width:220px;height:220px;max-width:100%;touch-action:none;border-radius:8px;border:1px solid var(--line);background:#07090c}
+  #pad{display:block;width:220px;height:220px;max-width:100%;touch-action:none;border-radius:8px;border:1px solid var(--line);background:#07090c}
   .side{flex:1 1 180px;min-width:150px}
   #prev{image-rendering:pixelated;width:96px;height:96px;background:#07090c;border:1px solid var(--line);border-radius:6px;display:block}
   .guess{font-size:3.4rem;line-height:1.1;font-weight:600;margin:6px 0 0}
@@ -140,22 +162,17 @@
   <div class="flywrap">
     <canvas id="fly"></canvas>
     <button id="brainbtn" class="brainbtn" aria-pressed="false">🧠 脳の活動</button>
-    <div id="brainpop" class="brainpop" hidden>
-      <canvas id="kcmini"></canvas>
-      <div class="bpline">KC 発火 <b id="kcminipct">–</b><span id="bpwhat">–</span></div>
-      <div id="bpbars"></div>
-    </div>
+    <div id="loadbar" class="loadbar"><span>脳を読み込み中…</span><div class="lbtrack"><i></i></div></div>
   </div>
   <div class="quizrow">
     <div class="qbox">
-      <div class="qdraw"><canvas id="q" width="16" height="16"></canvas><canvas id="qpad" width="264" height="264" title="ここに字を書くと蠅が読む"></canvas></div>
+      <div class="qdraw"><button class="xclear" hidden aria-label="消す">×</button><canvas id="q" width="16" height="16"></canvas><canvas id="qpad" width="264" height="264" title="ここに字を書くと蠅が読む"></canvas></div>
       <div class="qlab">問題 <b id="qtruth">–</b><br><span id="qsrc"></span></div>
-      <div class="qhint">✍ この枠にも書ける <button id="qclear" class="qclear">消す</button></div>
+      <div class="qhint">✍ この枠にも書ける</div>
     </div>
     <div class="verdict" id="verdict">–</div>
-    <div class="qbox">
+    <div class="qbox" hidden>
       <div class="qans" id="qans">–</div>
-      <div class="qlab">蠅の答え</div>
     </div>
     <div class="tally">
       <div class="scoreline"><span id="tallypct">–</span></div>
@@ -170,8 +187,7 @@
   </div>
   <div class="note" id="judgetally" style="margin-top:6px"></div>
   <div class="row" style="margin-top:12px">
-    <button id="autobtn">止める</button>
-    <button id="askbtn">1 問だけ</button>
+    <button id="autobtn">自動停止</button>
   </div>
   <p id="status">脳を読み込んでいます…（30 MB ほど）</p>
   <p class="note" id="brainnote"></p>
@@ -182,13 +198,12 @@
 <div class="panel">
   <h2><span>手書きで試す</span></h2>
   <div class="padrow">
-    <canvas id="pad" width="220" height="220"></canvas>
+    <div class="padwrap"><canvas id="pad" width="220" height="220"></canvas><button class="xclear" hidden aria-label="消す">×</button></div>
     <div class="side">
       <canvas id="prev" width="16" height="16"></canvas>
       <p class="guess" id="guess">–<small id="guesssub">ここにひらがなを 1 文字書くと出題が止まり、1 画書くごとに上の蠅が読んで旗で答える</small></p>
       <div class="row" style="margin-top:10px">
         <button id="backbtn">出題に戻る</button>
-        <button id="clearbtn">消す</button>
       </div>
       <p class="note">左上の小さな絵が、蠅に実際に見せる 16×16 の絵。練習の絵と同じように、真ん中に寄せて大きさとインクの量をそろえる。
       手書きでは練習していないので、フォントより読みにくい。</p>
@@ -267,6 +282,19 @@
   学習規則はこの実装で加えたもので、Shiu et al. のモデルにはない。</p>
 </div>
 
+<div id="brainwin" class="bwin" hidden>
+  <div class="bwhead" id="bwhead"><span class="bwtitle">🧠 脳の活動</span><span id="bwmode" class="bwmode">ふだん</span><button id="bwclose" class="bwclose" aria-label="閉じる">×</button></div>
+  <div class="bwbody">
+    <canvas id="kcmini"></canvas>
+    <div class="bwrow"><span>投射 PN</span><canvas id="sp-pn"></canvas><em id="hz-pn">–</em></div>
+    <div class="bwrow"><span>ケニヨン KC</span><canvas id="sp-kc"></canvas><em id="hz-kc">–</em></div>
+    <div class="bwrow"><span>出力 MBON</span><canvas id="sp-mb"></canvas><em id="hz-mb">–</em></div>
+    <div class="bpline">最後に見た絵: KC <b id="kcminipct">–</b> が発火。区画への入力が弱い順:</div>
+    <div id="bpbars"></div>
+    <div class="bwnote">キノコ体だけの計算を約 1/3〜1/4 倍速で表示（1 本の縦線 = 25 ms）。ふだんは投射ニューロン全部に弱いランダム入力（20 Hz）が入っているだけで、ケニヨン細胞はほとんど黙っている。オレンジの帯が絵を見ていた時間。タイトルバーをつかんで動かせる。</div>
+  </div>
+</div>
+
 <footer>
   文字: Google Fonts（SIL Open Font License）の日本語 40 書体。テスト用は Klee One / Zen Kurenaido / Shippori Mincho / M PLUS Rounded 1c / Sawarabi Gothic /
   書き順: <a href="https://kanjivg.tagaini.net/">KanjiVG</a>（Ulrich Apel, CC BY-SA 3.0。suji/strokes.json はその線を点列にしたもの） /
@@ -279,7 +307,7 @@
 </footer>
 
 <script type="module">
-import { runPage } from '../juku/page.js?v=25';
+import { runPage } from '../juku/page.js?v=28';
 import { ROWS, INK } from './kana.mjs?v=2';
 const ROWNAME = ['あ', 'か', 'さ', 'た', 'な', 'は', 'ま', 'や', 'ら', 'わ'];
 runPage({

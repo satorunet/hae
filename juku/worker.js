@@ -5,7 +5,7 @@
 // Bump the ?v= on flybrain.js and flybrain.wasm together whenever either
 // changes - Cloudflare keeps serving old copies otherwise.
 import { FlyBrain } from '../flybrain/flybrain.js?v=5';
-import { makeReader } from './reader.mjs?v=2';
+import { makeReader } from './reader.mjs?v=3';
 import * as K from '../hiragana/kana.mjs?v=2';
 
 const V = '?v=5';
@@ -14,6 +14,8 @@ const post = (m, t) => self.postMessage(m, t || []);
 let R = null, course = null, status = null, brainName = null;
 let quiz = null;          // the material questions are drawn from
 let allowed = null;       // letters unlocked (hiragana), null = all
+// watching the brain: which population each neuron is in, and a KC's slot
+let kind = null, kcSlot = null, live = false, liveTimer = null, working = false;
 
 async function gunzipBytes(res) {
   const s = res.body.pipeThrough(new DecompressionStream('gzip'));
@@ -40,8 +42,13 @@ async function init(c) {
     quiz = { bank, fonts: K.TEST_FONTS.map((n) => meta.fonts.indexOf(n)), names: K.TEST_FONTS };
   }
   // a trainer that has only just started has not written its first record yet
+  kind = new Uint8Array(R.brain.n); kcSlot = new Int32Array(R.brain.n).fill(-1);
+  for (const i of R.ALPN) kind[i] = 1;
+  R.KC.forEach((i, k) => { kind[i] = 2; kcSlot[i] = k; });
+  for (const i of R.MBON) kind[i] = 3;
   try { await refresh(); } catch (e) { post({ type: 'status', status: null, message: e.message }); }
   post({ type: 'ready', labels: R.labels, kc: Uint32Array.from(R.KC), size: R.course.size,
+    cells: { pn: R.ALPN.length, kc: R.KC.length, mbon: R.MBON.length }, chunkMs: R.CHUNK_MS,
     groups: R.groups.map((g) => ({ name: g.name, cells: g.cells.length, inputs: g.inputs })) });
 }
 
@@ -79,14 +86,44 @@ function question() {
   return { img, truth: k, source: quiz.names[fi] };
 }
 
+// one slice of simulation, boiled down to what the page draws
+function summarise(r) {
+  let pn = 0, kc = 0, mb = 0;
+  const slots = [];
+  for (const i of r.idx) {
+    const k = kind[i];
+    if (k === 1) pn++;
+    else if (k === 2) { kc++; slots.push(kcSlot[i]); }
+    else if (k === 3) mb++;
+  }
+  return { pn, kc, mb, slots: Uint16Array.from(slots) };
+}
+
+// with the brain window open, the brain keeps running on background input
+// between questions: 25 ms of it every 100 ms
+function tick() {
+  liveTimer = null;
+  if (!live || working) return;
+  const f = summarise(R.idle(R.CHUNK_MS));
+  post({ type: 'tick', ...f }, [f.slots.buffer]);
+  liveTimer = setTimeout(tick, 100);
+}
+
 function answer(img) {
-  const seen = R.look(img);
+  const frames = [];
+  const seen = R.look(img, { onChunk: (r) => frames.push(summarise(r)) });
   const d = R.decide(seen.drive, allowed);
-  return { answer: d.answer, second: d.second, margin: d.margin, drive: seen.drive, slots: seen.slots };
+  return { answer: d.answer, second: d.second, margin: d.margin, drive: seen.drive, slots: seen.slots, frames };
 }
 
 self.onmessage = async (e) => {
   const m = e.data;
+  if (m.type === 'live') {
+    live = m.on;
+    if (live && !liveTimer && R) liveTimer = setTimeout(tick, 50);
+    return;
+  }
+  working = true;
   try {
     if (m.type === 'init') await init(m.course);
     else if (m.type === 'refresh') await refresh();
@@ -100,4 +137,6 @@ self.onmessage = async (e) => {
   } catch (err) {
     post({ type: 'error', message: err.message, during: m.type });
   }
+  working = false;
+  if (live && !liveTimer && R) liveTimer = setTimeout(tick, 100);
 };

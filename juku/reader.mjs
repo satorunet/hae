@@ -108,7 +108,24 @@ export async function makeReader({ FlyBrain, base, course, v = '', onProgress })
   const chan = Array.from({ length: npix }, () => []);
   deck.forEach((p, i) => chan[i % npix].push(p));
 
-  let seed = 1;
+  let seed = 1, idling = false;
+  const CHUNK_MS = 25;
+
+  /**
+   * The brain with nothing in front of it: every projection neuron gets weak,
+   * independent Poisson input (background, `hz`), and the simulation carries on
+   * from where it was. Returns that slice's spikes. Only the pages use this.
+   */
+  function idle(ms, hz = 20) {
+    if (!idling) {
+      brain.clearStimuli();
+      brain.stimulate(ALPN, hz, { byIndex: true });
+      brain.setPlasticityParams({ eta: 0, tauTrace: 40, tauDopa: 1e7, gainMin: C.gainMin, gainMax: C.gainMax });
+      brain.reset(++seed);
+      idling = true;
+    }
+    return brain.run(ms);
+  }
 
   function stimulate(img) {
     brain.clearStimuli();
@@ -116,12 +133,19 @@ export async function makeReader({ FlyBrain, base, course, v = '', onProgress })
       if (img[i] > C.ink) brain.stimulate(chan[i], C.hz * img[i], { byIndex: true });
   }
 
-  /** Show a picture (C.ms of simulated time) and read the compartments. */
-  function look(img, { seed: s } = {}) {
+  /**
+   * Show a picture (C.ms of simulated time) and read the compartments. With
+   * `onChunk`, the same simulation runs in CHUNK_MS slices and each slice's
+   * spikes are handed over as they happen (for watching it; the result is
+   * identical - the steps and the random numbers are the same).
+   */
+  function look(img, { seed: s, onChunk } = {}) {
+    idling = false;
     stimulate(img);
     brain.setPlasticityParams({ eta: 0, tauTrace: 40, tauDopa: 1e7, gainMin: C.gainMin, gainMax: C.gainMax });
     brain.reset(s ?? ++seed);
-    brain.run(C.ms, { events: false });
+    if (onChunk) for (let t = 0; t < C.ms; t += CHUNK_MS) onChunk(brain.run(Math.min(CHUNK_MS, C.ms - t)), t);
+    else brain.run(C.ms, { events: false });
     const c = brain.counts(), spikes = new Uint16Array(KC.length);
     const slots = [];
     for (let k = 0; k < KC.length; k++) {
@@ -167,7 +191,7 @@ export async function makeReader({ FlyBrain, base, course, v = '', onProgress })
 
   return {
     course: C, brain, KC, ALPN, groups, labels: C.labels, npix,
-    look, decide, feedback, practise,
+    look, decide, feedback, practise, idle, CHUNK_MS, MBON,
     exportGains: () => brain.exportGains(),
     importGains: (g) => brain.importGains(g),
     forget: () => brain.forget(),
