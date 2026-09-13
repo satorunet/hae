@@ -125,8 +125,10 @@
   .bwstate{display:none}
   .bwin.compact .bwstate{display:block;flex:0 0 100%;margin-top:4px;padding:2px 6px;border-radius:8px;text-align:center;
     font-size:.64rem;background:#1c242c;color:#9fb0c0}
-  .bwin.compact .bwstate.ask,.bwin.compact .bwstate.read{background:#3a2a14;color:#ffcf8a}
+  .bwin.compact .bwstate.ask{background:#3a2a14;color:#ffcf8a}
   .bwin.compact .bwstate.write{background:#15301f;color:#bff0d2}
+  .bwin.compact .bwstate.eat{background:#33291a;color:#f2d49a}
+  .bwin.compact .bwstate.fly{background:#172838;color:#bfe0ff}
   .bwmode.write{background:#15301f;color:#bff0d2}
   .bwin.compact .bwrow,.bwin.compact .bwmode{display:none}
   #fly{display:block;width:100%;height:230px;border-radius:8px;background:radial-gradient(120% 100% at 50% 20%,#1a212a,#0a0d11)}
@@ -135,7 +137,9 @@
   .qdraw{position:relative;width:132px;height:132px}
   #qpad{position:absolute;inset:0;width:100%;height:100%;border-radius:8px;touch-action:none;cursor:crosshair;
     border:1px dashed #2f3b47}
-  #qpad.on{border:1px solid #4a5d70}
+  /* writing in it must not look or behave like selecting something */
+  .qdraw,#qpad{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;outline:none}
+  body.drawing{-webkit-user-select:none;user-select:none}
   .judge{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;padding:9px 11px;
     background:#11161c;border:1px solid var(--line);border-radius:8px}
   .judge[hidden]{display:none}
@@ -388,7 +392,7 @@
   <div class="bwhead" id="bwhead"><span class="bwtitle">🧠 脳の活動</span><span id="bwmode" class="bwmode">ふだん</span><button id="bwmin" class="bwclose" aria-label="コンパクト表示の切り替え">－</button><button id="bwclose" class="bwclose" aria-label="閉じる">×</button></div>
   <div class="bwbody">
     <canvas id="kcmini"></canvas>
-    <div id="bwstate" class="bwstate idle">ふだん（背景入力だけ）</div>
+    <div id="bwstate" class="bwstate idle">通常</div>
     <div class="bwrow"><span>投射 PN</span><canvas id="sp-pn"></canvas><em id="hz-pn">–</em></div>
     <div class="bwrow"><span>ケニヨン KC</span><canvas id="sp-kc"></canvas><em id="hz-kc">–</em></div>
     <div class="bwrow"><span>出力 MBON</span><canvas id="sp-mb"></canvas><em id="hz-mb">–</em></div>
@@ -417,7 +421,7 @@
 </nav>
 
 <script type="module">
-import { runPage } from '../juku/page.js?v=47';
+import { runPage } from '../juku/page.js?v=49';
 runPage({ course: 'suji', rows: ['123456789'], padInk: 17.7, pen: 0.085 });
 </script>
 </body>

@@ -229,8 +229,7 @@ export function runPage(o) {
     const el = $('#bwmode');
     el.textContent = innerWidth <= 640 ? { idle: 'ふだん', ask: '問題を見ている', read: '字を見ている', write: '字を書いている' }[m] : MODE_TEXT[m];
     el.className = 'bwmode ' + m;
-    const st = $('#bwstate');                         // compact view: the state where the rates were
-    if (st) { st.textContent = MODE_TEXT[m]; st.className = 'bwstate ' + m; }
+
   }
   function feed(f, mode) {
     series.push({ pn: f.pn, kc: f.kc, mb: f.mb, dn: f.dn || 0, mode });
@@ -302,9 +301,24 @@ export function runPage(o) {
   }, 100);
 
   // Kenyon cells glowing as they fire, and a rate trace for each layer
+  // compact view: one word for what the fly is up to, where the rates were
+  function drawCompactState() {
+    const st = $('#bwstate');
+    if (!st) return;
+    let key = 'idle';
+    if (bwMode === 'ask' || bwMode === 'read') key = 'ask';
+    else if (fly && fly.fl) key = 'fly';
+    else if (fly && fly.phase === 'writing') key = 'write';
+    else if (fly && (fly.phase === 'toFood' || fly.phase === 'feeding' || fly.phase === 'retract')) key = 'eat';
+    if (st.dataset.key === key) return;
+    st.dataset.key = key;
+    st.textContent = { idle: '通常', write: '字を書く', ask: '問題読む', eat: '食べる', fly: '飛行' }[key];
+    st.className = 'bwstate ' + key;
+  }
   function drawBrainLive(now) {
     if (!brainOn) { rafOn = false; return; }
     requestAnimationFrame(drawBrainLive);
+    drawCompactState();
     if (!meta || !kcXY) return;
     const dt = Math.min(0.1, (now - (heatT || now)) / 1000); heatT = now;
     const c = $('#kcmini'), dpr = Math.min(2, devicePixelRatio || 1);
@@ -559,6 +573,7 @@ export function runPage(o) {
   const strokeDone = () => {
     if (!drawing) return;
     drawing = false;
+    document.body.classList.remove('drawing');
     clearTimeout(readTimer);
     readTimer = setTimeout(readDrawing, 450);        // a pause after a stroke = read it
     clearTimeout(backTimer);
@@ -569,6 +584,8 @@ export function runPage(o) {
     cv.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       cv.setPointerCapture(e.pointerId); drawing = true; clearTimeout(readTimer);
+      document.body.classList.add('drawing');
+      getSelection?.()?.removeAllRanges();
       if (!hand) strokes = [];                       // a fresh page for a fresh go
       enterHand();
       showJudge(false); handCands = [];              // the reading is about to change
@@ -578,6 +595,8 @@ export function runPage(o) {
     cv.addEventListener('pointermove', (e) => { if (drawing) { strokes[strokes.length - 1].push(at(cv, e)); redrawPad(); } });
     cv.addEventListener('pointerup', strokeDone);
     cv.addEventListener('pointercancel', strokeDone);
+    cv.addEventListener('contextmenu', (e) => e.preventDefault());   // no long-press menu
+    cv.addEventListener('selectstart', (e) => e.preventDefault());
   }
   function readDrawing() {
     if (!meta || !status || !strokes.length) return;
