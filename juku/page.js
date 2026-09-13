@@ -130,6 +130,7 @@ export function runPage(o) {
         worker.postMessage({ type: 'refresh' });
       }
       $('#status').textContent = '出題中…';
+      brainThinking('問題を見ている…');
       worker.postMessage({ type: 'ask' });
     }, delay);
   }
@@ -145,15 +146,16 @@ export function runPage(o) {
       <td><div class="bar"><span class="${c === lastAnswer ? 'win' : ''}" style="left:0;width:${(100 * (hi - v) / span).toFixed(1)}%"></span></div></td>
       <td class="num">${(100 * v).toFixed(1)}</td></tr>`).join('');
   }
-  function drawKC() {
-    const c = $('#kc'), dpr = Math.min(2, devicePixelRatio || 1);
-    const w = c.clientWidth || 720, h = Math.round(w * 0.36);
+  // the Kenyon cells at their FlyWire soma positions, the ones this picture lit up in blue
+  function paintKC(c, aspect, pad) {
+    const dpr = Math.min(2, devicePixelRatio || 1);
+    const w = c.clientWidth || 720, h = Math.round(w * aspect);
     c.width = w * dpr; c.height = h * dpr; c.style.height = h + 'px';
     const x = c.getContext('2d');
     x.setTransform(dpr, 0, 0, dpr, 0, 0);
     x.clearRect(0, 0, w, h);
     if (!kcXY) return;
-    const n = kcXY.length / 2, p2 = 10, r = Math.max(0.9, Math.min(2.2, w / 420));
+    const n = kcXY.length / 2, r = Math.max(0.7, Math.min(2.2, w / 420));
     const on = new Uint8Array(n);
     if (lastSlots) for (const k of lastSlots) on[k] = 1;
     for (const pass of [0, 1]) {
@@ -161,13 +163,49 @@ export function runPage(o) {
       x.beginPath();
       for (let k = 0; k < n; k++) {
         if (on[k] !== pass) continue;
-        const px = p2 + kcXY[2 * k] * (w - 2 * p2), py = p2 + kcXY[2 * k + 1] * (h - 2 * p2);
+        const px = pad + kcXY[2 * k] * (w - 2 * pad), py = pad + kcXY[2 * k + 1] * (h - 2 * pad);
         x.moveTo(px + r, py); x.arc(px, py, r, 0, 6.2832);
       }
       x.fill();
     }
-    $('#pct').textContent = lastSlots ? (100 * lastSlots.length / n).toFixed(1) + '%' : '–';
   }
+  function drawKC() {
+    paintKC($('#kc'), 0.36, 10);
+    $('#pct').textContent = lastSlots && kcXY ? (100 * lastSlots.length / (kcXY.length / 2)).toFixed(1) + '%' : '–';
+    drawBrainPop();
+  }
+
+  // the brain overlay in the corner of the fly's view, behind the 🧠 button
+  let brainOn = false;
+  try { brainOn = localStorage.getItem('hae-brain-pop') === '1'; } catch { /* no storage */ }
+  function setBrain(on) {
+    brainOn = on;
+    try { localStorage.setItem('hae-brain-pop', on ? '1' : '0'); } catch { /* no storage */ }
+    $('#brainbtn').setAttribute('aria-pressed', String(on));
+    $('#brainpop').hidden = !on;
+    drawBrainPop();
+  }
+  function brainThinking(what) {
+    if (!brainOn) return;
+    $('#bpwhat').textContent = what;
+    $('#brainpop').classList.add('busy');
+  }
+  function drawBrainPop() {
+    if (!brainOn || !meta) return;
+    $('#brainpop').classList.remove('busy');
+    const narrow = ($('.flywrap').clientWidth || 600) < 520;
+    paintKC($('#kcmini'), 0.36, 3);
+    $('#kcminipct').textContent = lastSlots && kcXY ? `${lastSlots.length.toLocaleString()} 個 ${(100 * lastSlots.length / (kcXY.length / 2)).toFixed(1)}%` : '–';
+    if (!lastDrive || !lastAllowed) { $('#bpbars').innerHTML = ''; $('#bpwhat').textContent = 'まだ何も見ていない'; return; }
+    const cand = lastAllowed.map((c) => [lastDrive[c], c]).sort((a, b) => a[0] - b[0]).slice(0, narrow ? 3 : 5);
+    const lo = cand[0][0], hi = Math.max(...lastAllowed.map((c) => lastDrive[c])), span = (hi - lo) || 1;
+    $('#bpwhat').textContent = narrow ? '区画への入力が弱い順' : 'MBON 区画への入力（いちばん弱い区画が答え）';
+    $('#bpbars').innerHTML = cand.map(([v, c]) => `<div class="bprow"><b>${esc(labels[c])}</b>` +
+      `<span class="bpbar"><i class="${c === lastAnswer ? 'win' : ''}" style="width:${(100 * (hi - v) / span).toFixed(0)}%"></i></span>` +
+      `<em>${(100 * v).toFixed(1)}</em></div>`).join('');
+  }
+  $('#brainbtn').addEventListener('click', () => setBrain(!brainOn));
+  setBrain(brainOn);
 
   // ------------------------------------------------------------ drawing pad
   // Two surfaces share one drawing: the pad further down, and the question box
@@ -321,6 +359,7 @@ export function runPage(o) {
     if (busy || drawing) { readTimer = setTimeout(readDrawing, 200); return; }
     busy = true;
     $('#guesssub').textContent = '読んでいます…';
+    brainThinking('あなたの字を見ている…');
     worker.postMessage({ type: 'read', img: padImage() });
   }
   // the strokes at 48 x 48 with a pen about as thick as a font's, then the
