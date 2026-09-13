@@ -11,4 +11,7 @@ const app = (course) => ({
   max_memory_restart: '800M',
   autorestart: true,
 });
-module.exports = { apps: [app('suji'), app('hiragana')] };
+// the small API for visitors' handwriting records (no training)
+const api = { name: 'hae-juku-api', cwd: __dirname, script: 'api.mjs', interpreter: '/usr/bin/node-22',
+  max_memory_restart: '200M', autorestart: true };
+module.exports = { apps: [app('suji'), app('hiragana'), api] };

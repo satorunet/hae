@@ -1,7 +1,7 @@
 // What /suji/ and /hiragana/ share: the server's record, a copy of the
 // server's fly answering questions in the browser, and writing your own letter
 // in the question box for it to read.
-import { FlagFly } from '../suji/flag.js?v=35';
+import { FlagFly } from '../suji/flag.js?v=37';
 import { RecordChart, COLORS } from './chart.js?v=3';
 import { normalise } from '../hiragana/kana.mjs?v=2';
 import { Sound } from './sound.js?v=1';
@@ -224,6 +224,8 @@ export function runPage(o) {
     const el = $('#bwmode');
     el.textContent = innerWidth <= 640 ? { idle: 'ふだん', ask: '問題を見ている', read: '字を見ている' }[m] : MODE_TEXT[m];
     el.className = 'bwmode ' + m;
+    const st = $('#bwstate');                         // compact view: the state where the rates were
+    if (st) { st.textContent = MODE_TEXT[m]; st.className = 'bwstate ' + m; }
   }
   function feed(f, mode) {
     series.push({ pn: f.pn, kc: f.kc, mb: f.mb, mode });
@@ -278,6 +280,17 @@ export function runPage(o) {
     head.addEventListener('pointerup', end);
     head.addEventListener('pointercancel', end);
     $('#bwclose').addEventListener('click', () => setBrain(false));
+    // compact: just the Kenyon cells and one line of rates (the default on phones)
+    let compact = innerWidth <= 640;
+    try { const c = localStorage.getItem('hae-brain-compact'); if (c != null) compact = c === '1'; } catch { /* no storage */ }
+    const setCompact = (on) => {
+      compact = on; win.classList.toggle('compact', on);
+      $('#bwmin').textContent = on ? '▢' : '－'; $('#bwmin').title = on ? '広げる' : 'コンパクトにする';
+      try { localStorage.setItem('hae-brain-compact', on ? '1' : '0'); } catch { /* no storage */ }
+      if (brainOn) placeWindow({ x: parseFloat(win.style.left) || 0, y: parseFloat(win.style.top) || 0 });
+    };
+    $('#bwmin').addEventListener('click', () => setCompact(!compact));
+    setCompact(compact);
     addEventListener('resize', () => { if (brainOn) placeWindow({ x: parseFloat(win.style.left), y: parseFloat(win.style.top) }); });
   })();
   $('#brainbtn').addEventListener('click', () => setBrain(!brainOn));
@@ -393,7 +406,7 @@ export function runPage(o) {
   // never sent anywhere. The fly holds its flag up until you answer; × moves
   // it on to its second and then third choice; ○ feeds it, and once it has
   // eaten the quiz carries on by itself.
-  let handCands = [], handK = 0, handSure = 1;
+  let handCands = [], handK = 0, handSure = 1, handImg = null;
   const hstat = { n: 0, first: 0, top3: 0 };
   function showJudge(on) {
     $('#judge').hidden = !on;
@@ -435,6 +448,7 @@ export function runPage(o) {
       hstat.n++; hstat.top3++; if (handK === 0) hstat.first++;
       drawHandTally();
       if (fly) fly.release(true);
+      recordDrawing(String(handK + 1));
       finishHand(`○ 第 ${handK + 1} 候補の「${labels[handCands[handK]]}」で正解 — 餌を食べ終わったら出題に戻る。`);
       backToQuiz();
       return;
@@ -452,9 +466,50 @@ export function runPage(o) {
     // three tries and none right: it gives up
     v.textContent = '諦めた'; v.className = 'verdict no giveup';
     sound.giveUp();
+    recordDrawing('giveup');
     finishHand(`蠅は諦めた — 第 ${handCands.length} 候補まで全部はずれ（${handCands.map((c) => labels[c]).join('・')}）。出題に戻る。`);
     backToQuiz();
   }
+  // Everyone's writing and how the fly read it: sent once a letter is settled,
+  // shown under 記録. Only the 16x16 (or 12x12) picture the fly saw is kept.
+  function recordDrawing(result) {
+    if (!handImg || !handCands.length) return;
+    const bytes = Uint8Array.from(handImg, (v) => Math.round(255 * Math.min(1, Math.max(0, v))));
+    let bin = '';
+    for (const b of bytes) bin += String.fromCharCode(b);
+    fetch('../juku/api/drawing', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ course: o.course, img: btoa(bin), cands: handCands.map((c) => labels[c]), result }) })
+      .then(() => loadDrawings()).catch(() => {});
+    handImg = null;
+  }
+  async function loadDrawings() {
+    const box = $('#drawings');
+    if (!box) return;
+    try {
+      const r = await fetch(`../juku/api/drawings?course=${o.course}&limit=60&t=${Date.now()}`, { cache: 'no-store' });
+      const d = await r.json();
+      const T = d.tally;
+      $('#drawtally').textContent = T.n
+        ? `${T.n} 字: 第 1 候補で正解 ${pct(T.first / T.n)}（${T.first}）、第 3 候補までに正解 ${pct(T.top3 / T.n)}（${T.top3}）`
+        : 'まだ誰も書いていない。出題の枠に字を書くと、ここに残る。';
+      box.innerHTML = d.items.map((it, i) => {
+        const k = it.result === 'giveup' ? 9 : +it.result;
+        const marks = it.cands.map((c, j) => j + 1 < k || k === 9 ? `<s>${esc(c)}</s>` : j + 1 === k ? `<b>${esc(c)}</b>` : '').filter(Boolean).join('');
+        const when = new Date(it.t).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        return `<div class="dcard ${k === 9 ? 'gave' : k === 1 ? 'first' : ''}" title="${when}"><canvas data-i="${i}" width="${it.size}" height="${it.size}"></canvas>` +
+          `<div class="dmarks">${marks}</div><div class="dres">${k === 9 ? '諦めた' : k === 1 ? '一発で正解' : `${k} 回目で正解`}</div></div>`;
+      }).join('');
+      box.querySelectorAll('canvas').forEach((cv) => {
+        const it = d.items[+cv.dataset.i], S = it.size, raw = atob(it.img);
+        const g = cv.getContext('2d'), im = g.createImageData(S, S);
+        for (let j = 0; j < S * S; j++) { const v = raw.charCodeAt(j); im.data[4 * j] = im.data[4 * j + 1] = im.data[4 * j + 2] = v; im.data[4 * j + 3] = 255; }
+        g.putImageData(im, 0, 0);
+      });
+    } catch { /* the record can wait */ }
+  }
+  loadDrawings();
+  setInterval(() => { if (document.body.dataset.tab === 'record' || innerWidth > 640) loadDrawings(); }, 30e3);
+
   // once marked, straight back to the quiz - after the flag is down (and the food eaten)
   function backToQuiz() {
     clearTimeout(backTimer);
@@ -648,6 +703,7 @@ export function runPage(o) {
         (o.levelName && unlocked() < letters.length ? `（いま読めるのは習った ${unlocked()} 文字の中からだけ）` : ''));
       if (hand && strokes.length && !drawing) {    // answer where the questions are, and wait for ○/×
         handCands = lastAllowed.slice().sort((a, b) => m.drive[a] - m.drive[b]).slice(0, 3);
+        handImg = padImage();                      // the picture the fly read, for the public record
         handK = 0; handSure = Math.min(1, m.margin / 0.03);
         $('#verdict').textContent = '?'; $('#verdict').className = 'verdict';
         clearTimeout(backTimer);
@@ -696,7 +752,7 @@ export function runPage(o) {
     document.body.dataset.tab = tb;
     tabs.forEach((b) => b.setAttribute('aria-selected', String(b.dataset.go === tb)));
     scrollTo(0, 0);
-    if (tb === 'record') chart.draw();              // canvases drawn while hidden have no size
+    if (tb === 'record') { chart.draw(); loadDrawings(); }   // canvases drawn while hidden have no size
     if (tb === 'about') { drawKC(); drawBars(); }
     if (tb === 'play' && fly) fly.resize();
   }

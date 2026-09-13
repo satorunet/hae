@@ -376,42 +376,101 @@ export class FlagFly {
     }
   }
 
-  // Drinking: a thin tube reaches from the tip of the proboscis down into the
-  // drop, and swallows of sugar water run up it. (The labellum is not a
-  // separate joint in the skeleton, so the tube stands in for its reach.)
+  // Drinking: the proboscis reaches on down into the drop as a flexible,
+  // ringed tube that arcs from the mouth, ends in the two soft lobes of the
+  // labellum spread on the surface, and pumps - bulges of sugar water run up
+  // it. It grows out when eating starts and draws back in when it ends. (The
+  // skeleton has no labellum joint, so this stands in for its reach.)
   makeTube() {
+    const N = 30, M = 12;                              // rings along it, sides around it
+    const pos = new Float32Array(N * M * 3), idx = [];
+    for (let i = 0; i < N - 1; i++) for (let j = 0; j < M; j++) {
+      const a = i * M + j, b = i * M + (j + 1) % M, c = a + M, d = b + M;
+      idx.push(a, c, b, b, c, d);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setIndex(idx);
+    const skin = new THREE.MeshPhysicalMaterial({ color: 0x9a6438, roughness: 0.32, clearcoat: 0.8,
+      clearcoatRoughness: 0.25, sheen: 0.6, sheenColor: new THREE.Color(0xe0a070), side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(geo, skin);
+    mesh.frustumCulled = false;
+    // the labellum: two fleshy lobes with the fine grooves (pseudotracheae) drawn on
+    const grooves = document.createElement('canvas');
+    grooves.width = grooves.height = 128;
+    const g = grooves.getContext('2d');
+    g.fillStyle = '#c99466'; g.fillRect(0, 0, 128, 128);
+    g.strokeStyle = 'rgba(80,45,20,.55)'; g.lineWidth = 2;
+    for (let k = -9; k <= 9; k++) { g.beginPath(); g.moveTo(64, 120); g.quadraticCurveTo(64 + k * 5, 60, 64 + k * 7.5, 6); g.stroke(); }
+    const lobeMat = new THREE.MeshPhysicalMaterial({ map: new THREE.CanvasTexture(grooves), roughness: 0.45, clearcoat: 0.5 });
+    const lobes = new THREE.Group();
+    for (const sd of [-1, 1]) {
+      const lobe = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 12), lobeMat);
+      lobe.scale.set(0.075, 0.055, 0.022);
+      lobe.position.set(0, sd * 0.045, 0);
+      lobe.rotation.x = sd * 0.35;
+      lobes.add(lobe);
+    }
+    const bolus = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8),
+      new THREE.MeshStandardMaterial({ color: 0xf2c25c, emissive: 0x7a5412, roughness: 0.25, transparent: true, opacity: 0.9 }));
     const group = new THREE.Group();
-    const geo = new THREE.CylinderGeometry(0.02, 0.034, 1, 10, 6, true);
-    geo.translate(0, 0.5, 0);                          // base at the mouth, growing along +y
-    const mesh = new THREE.Mesh(geo, new THREE.MeshPhysicalMaterial({ color: 0xa8743f, roughness: 0.35,
-      clearcoat: 0.6, transparent: true, opacity: 0.92, side: THREE.DoubleSide }));
-    const bolus = new THREE.Mesh(new THREE.SphereGeometry(0.036, 10, 8),
-      new THREE.MeshStandardMaterial({ color: 0xf2c25c, emissive: 0x6a4a10, roughness: 0.3 }));
-    group.add(mesh, bolus);
+    group.add(mesh, lobes, bolus);
     group.visible = false;
-    return { group, mesh, bolus, w: 0, tipLocal: new THREE.Vector3(0.3, 0, -0.18) };
+    return { group, mesh, geo, pos, N, M, lobes, bolus, w: 0, tipLocal: new THREE.Vector3(0.3, 0, -0.18) };
   }
   poseTube(dt, feeding) {
     const T = this.tube;
-    T.w = approach(T.w, feeding && this.phaseT > 0.25 && this.food.life > 0.05 ? 1 : 0, dt, 0.12);
-    T.group.visible = T.w > 0.02;
+    // out while eating (once the head is down), back in when it stops
+    const want = (feeding && this.phaseT > 0.2 && this.food.life > 0.04) ? 1 : 0;
+    T.w = clamp(T.w + (want ? dt / 0.45 : -dt / 0.35), 0, 1);
+    T.group.visible = T.w > 0.01;
     if (!T.group.visible) return;
     this.body.root.updateMatrixWorld(true);
-    const S = this._ts ??= new THREE.Vector3(), E = this._te ??= new THREE.Vector3(), D = this._td ??= new THREE.Vector3();
+    const S = this._ts ??= new THREE.Vector3(), E = this._te ??= new THREE.Vector3();
     S.copy(T.tipLocal); this.body.byName.c_haustellum.obj.localToWorld(S);
-    E.set(this.food.x, this.food.y, 0.06 + 0.1 * this.food.life);
-    D.subVectors(E, S);
-    const len = D.length();
-    D.normalize();
-    const pulse = 1 + 0.18 * Math.sin(this.t * 13);       // the pharynx pumping
-    T.mesh.position.copy(S);
-    T.mesh.quaternion.setFromUnitVectors(UP_Y, D);
-    T.mesh.scale.set(pulse, len * T.w, pulse);
-    // a swallow travelling up from the drop to the mouth, again and again
-    const u = (this.t * 1.7) % 1;
-    T.bolus.visible = T.w > 0.9;
-    T.bolus.position.copy(E).lerp(S, u);
-    T.bolus.scale.setScalar(0.7 + 0.5 * Math.sin(Math.PI * u));
+    const ds = 0.35 + 0.65 * this.food.life;              // the drop's size (see the food mesh)
+    E.set(this.food.x, this.food.y, 0.206 * ds + 0.012);  // the lobes rest on its top
+    // an arc: out from the mouth, over, down onto the drop
+    const C = this._tc ??= new THREE.Vector3();
+    C.addVectors(S, E).multiplyScalar(0.5); C.z += 0.12 + 0.05 * Math.sin(this.t * 2.1);
+    const ease01 = ease(T.w), t = this.t;
+    const at = (u, out) => {                             // quadratic Bezier, u in 0..1
+      const a = (1 - u) * (1 - u), b = 2 * (1 - u) * u, c = u * u;
+      return out.set(a * S.x + b * C.x + c * E.x, a * S.y + b * C.y + c * E.y, a * S.z + b * C.z + c * E.z);
+    };
+    const { N, M, pos } = T, P = this._tp ??= new THREE.Vector3(), Q = this._tq ??= new THREE.Vector3();
+    const tan = this._tt ??= new THREE.Vector3(), nrm = this._tn ??= new THREE.Vector3(), bin = this._tb ??= new THREE.Vector3();
+    const bulgeAt = 1 - ((t * 1.6) % 1);                 // a swallow runs from the tip to the mouth
+    for (let i = 0; i < N; i++) {
+      const u = (i / (N - 1)) * ease01;                    // only as much of the arc as has grown
+      at(u, P); at(Math.min(1, u + 0.01), Q);
+      tan.subVectors(Q, P).normalize();
+      nrm.set(0, 0, 1).cross(tan); if (nrm.lengthSq() < 1e-6) nrm.set(1, 0, 0); nrm.normalize();
+      bin.crossVectors(tan, nrm);
+      const f = i / (N - 1);
+      let r = 0.03 - 0.01 * f + 0.02 * Math.max(0, (f - 0.82) / 0.18) ** 2;    // tapering, flaring into the labellum
+      r *= 1 + 0.09 * Math.sin(f * 46);                    // the rings of the cuticle
+      r *= 1 + 0.12 * Math.sin(t * 13 - f * 4);            // pumping
+      r *= 1 + 0.5 * Math.exp(-(((f - bulgeAt) / 0.07) ** 2)) * (T.w > 0.95 ? 1 : 0);
+      for (let j = 0; j < M; j++) {
+        const th = (j / M) * TAU, cs = Math.cos(th) * r, sn = Math.sin(th) * r, o = 3 * (i * M + j);
+        pos[o] = P.x + nrm.x * cs + bin.x * sn; pos[o + 1] = P.y + nrm.y * cs + bin.y * sn; pos[o + 2] = P.z + nrm.z * cs + bin.z * sn;
+      }
+    }
+    T.geo.attributes.position.needsUpdate = true;
+    T.geo.computeVertexNormals();
+    // the lobes sit at the end of whatever has grown, opening flat on the drop as it arrives
+    at(ease01, P);
+    T.lobes.position.copy(P);
+    T.lobes.lookAt(P.x, P.y, P.z - 1);
+    T.lobes.rotateZ(Math.atan2(E.y - S.y, E.x - S.x));
+    const open = clamp((T.w - 0.7) / 0.3, 0, 1);
+    T.lobes.scale.setScalar(0.4 + 0.6 * open);
+    T.lobes.children.forEach((l, k) => { l.rotation.x = (k ? 1 : -1) * (0.9 - 0.55 * open + 0.08 * Math.sin(t * 9 + k)); });
+    // the sugar water in the swallow
+    T.bolus.visible = T.w > 0.95;
+    at(bulgeAt, T.bolus.position);
+    T.bolus.scale.setScalar(0.026);
   }
 
   // the trail the writing leg leaves: flat quads on the ground, one per step of the tip
@@ -629,7 +688,10 @@ export class FlagFly {
     }
     if (this.phase === 'feeding') {
       this.food.life = Math.max(0, 1 - this.phaseT / FEED_FOR);
-      if (this.food.life <= 0) { this.food.mesh.visible = false; this.reward = false; this.setPhase('idle'); }
+      if (this.food.life <= 0) { this.food.mesh.visible = false; this.reward = false; this.setPhase('retract'); }
+    }
+    if (this.phase === 'retract') {                        // the tube is drawn back in before it moves on
+      if (this.tube.w <= 0) this.setPhase('idle');
     }
     const feeding = this.phase === 'feeding';
     if (this.food.mesh.visible) {
@@ -640,7 +702,7 @@ export class FlagFly {
 
     // ---------------------------------------------------------- idle behaviour
     const writing = this.phase === 'writing' || this.phase === 'waiting';
-    const answering = holding || this.phase === 'toFood' || feeding || writing;
+    const answering = holding || this.phase === 'toFood' || feeding || writing || this.phase === 'retract';
     this.actT -= dt;
     if (!answering && !this.fl && this.actT <= 0) this.chooseAct();
 
@@ -665,7 +727,8 @@ export class FlagFly {
       : (this.act === 'feed' && !answering) ? clamp(0.4 + 0.6 * Math.sin(this.t * 7.5), 0.05, 1)
       : (!answering && Math.sin(this.t * 0.7) > 0.985 ? 0.3 : 0);
     this.prob = approach(this.prob, wantProb, dt, 0.07);
-    this.lick = approach(this.lick, feeding ? 1 : (this.act === 'feed' && !answering) ? 0.45 : 0, dt, 0.15);
+    // the mouthparts and antennae are never quite still; eating works them hard
+    this.lick = approach(this.lick, feeding ? 1 : (this.act === 'feed' && !answering) ? 0.6 : 0.32, dt, 0.15);
     if (grooming) { this.groomPh += dt * TAU * 5.5; this.groomSlow += dt * TAU * 0.35; }
     if (rubbing) this.rubPh += dt * TAU * 6.5;
     this.head = approach(this.head, answering || this.act === 'walk' ? 0 : Math.sin(this.t * 0.55) * 0.35, dt, 0.35);
@@ -785,9 +848,10 @@ export class FlagFly {
     const L = this.lick, t = this.t;
     jset('c_head-c_rostrum-pitch', -1.25 * this.prob + L * (0.22 * Math.sin(t * 8.3) + 0.08 * Math.sin(t * 19)));
     jset('c_head-c_rostrum-yaw', L * 0.14 * Math.sin(t * 3.1));
-    jset('c_rostrum-c_haustellum-pitch', -1.6 * this.prob + L * (0.42 * Math.sin(t * 15.5) + 0.12 * Math.sin(t * 4.2)));
+    const fuss = 0.06 * Math.sin(t * 23.1) + 0.05 * Math.sin(t * 31.7 + 1.3);   // restless flicker on top
+    jset('c_rostrum-c_haustellum-pitch', -1.6 * this.prob + L * (0.42 * Math.sin(t * 15.5) + 0.12 * Math.sin(t * 4.2)) + fuss);
     jset('c_rostrum-c_haustellum-yaw', L * 0.38 * Math.sin(t * 5.3));
-    jset('c_rostrum-c_haustellum-roll', L * 0.3 * Math.sin(t * 7.1 + 1));
+    jset('c_rostrum-c_haustellum-roll', L * 0.3 * Math.sin(t * 7.1 + 1) + 0.6 * fuss);
     const tw = (ph) => Math.max(0, Math.sin(t * 2.7 + ph)) ** 6;        // occasional sharp flicks
     jset('c_head-l_pedicel-pitch', L * (0.18 * Math.sin(t * 11) + 0.35 * tw(0)));
     jset('c_head-r_pedicel-pitch', L * (0.18 * Math.sin(t * 11 + 2.1) + 0.35 * tw(1.9)));

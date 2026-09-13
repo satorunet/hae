@@ -62,6 +62,14 @@
   #charttip i,.legend i{display:inline-block;width:10px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
   .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.76rem;color:var(--dim);margin-top:8px}
   /* quiz */
+  .dgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}
+  .dcard{background:#11161c;border:1px solid var(--line);border-radius:8px;padding:6px 4px 5px;text-align:center}
+  .dcard.first{border-color:#2f6b49}.dcard.gave{border-color:#5a2a2f}
+  .dcard canvas{display:block;width:56px;height:56px;margin:0 auto;image-rendering:pixelated;border-radius:4px;background:#07090c}
+  .dmarks{margin-top:4px;font-size:1rem;line-height:1.2;display:flex;justify-content:center;gap:5px}
+  .dmarks s{color:#7d8a99;text-decoration-color:#ff6b6b;text-decoration-thickness:2px}
+  .dmarks b{color:#bff0d2}
+  .dres{font-size:.64rem;color:#8a97a6}
   .flywrap{position:relative}
   .soundbtn{position:absolute;left:10px;bottom:10px;width:38px;height:38px;padding:0;border-radius:50%;font-size:1rem;
     background:rgba(13,16,20,.72);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
@@ -90,7 +98,7 @@
   .bwin.dragging{opacity:.9;box-shadow:0 14px 40px rgba(0,0,0,.6)}
   .bwhead{display:flex;align-items:center;gap:6px;padding:5px 5px 5px 9px;cursor:move;touch-action:none;user-select:none;
     -webkit-user-select:none;border-bottom:1px solid #222b34;background:#131920;border-radius:9px 9px 0 0}
-  .bwtitle{font-weight:600;color:#dbe5ee;font-size:.74rem}
+  .bwtitle{font-weight:600;color:#dbe5ee;font-size:.74rem;margin-right:auto}
   .bwmode{flex:1;font-size:.64rem;padding:1px 6px;border-radius:9px;background:#1c242c;color:#9fb0c0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .bwmode.ask,.bwmode.read{background:#3a2a14;color:#ffcf8a}
   .bwclose{font-size:.9rem;line-height:1;padding:3px 8px;border-radius:6px;background:transparent;border-color:transparent}
@@ -107,6 +115,18 @@
   .bpbar i{display:block;height:100%;border-radius:3px;background:#3b4a5a}.bpbar i.win{background:#59b7ff}
   .bprow em{font-style:normal;width:2.6em;text-align:right;font-variant-numeric:tabular-nums;color:#7d8a99}
   .bwnote{margin-top:6px;color:#6b7887;font-size:.6rem}
+  .bwin.compact{width:156px}
+  .bwin.compact .bwbody{padding:4px 6px 5px;display:flex;flex-wrap:wrap;column-gap:8px}
+  .bwin.compact #kcmini{flex:0 0 100%}
+  .bwin.compact .bwrow{margin-top:3px;gap:3px}
+  .bwin.compact .bwrow canvas,.bwin.compact .bwnote,.bwin.compact .bpline,.bwin.compact #bpbars{display:none}
+  .bwin.compact .bwrow span{display:none}
+  .bwin.compact .bwrow em{width:auto;font-size:.6rem}
+  .bwstate{display:none}
+  .bwin.compact .bwstate{display:block;flex:0 0 100%;margin-top:4px;padding:2px 6px;border-radius:8px;text-align:center;
+    font-size:.64rem;background:#1c242c;color:#9fb0c0}
+  .bwin.compact .bwstate.ask,.bwin.compact .bwstate.read{background:#3a2a14;color:#ffcf8a}
+  .bwin.compact .bwrow,.bwin.compact .bwmode{display:none}
   #fly{display:block;width:100%;height:230px;border-radius:8px;background:radial-gradient(120% 100% at 50% 20%,#1a212a,#0a0d11)}
   .quizrow{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:14px}
   .qbox{text-align:center;flex:0 0 auto}
@@ -210,6 +230,7 @@
     .judge button{flex:1;min-height:52px;font-size:1.15rem;border-radius:12px}
     /* the brain window: compact */
     .bwin{width:min(50vw,210px);font-size:.6rem}
+    .bwin.compact{width:140px}
     .bwhead{padding:3px 3px 3px 7px}.bwtitle{font-size:.66rem}.bwmode{font-size:.58rem}
     .bwclose{padding:2px 7px}
     .bwbody{padding:5px 6px 6px}
@@ -248,7 +269,7 @@
       <div id="autobadge" class="autobadge">自動出題中</div>
       <div class="qdraw"><button class="xclear" hidden aria-label="消す">×</button><canvas id="q" width="12" height="12"></canvas><canvas id="qpad" width="264" height="264" title="ここに字を書くと蠅が読む"></canvas></div>
       <div class="qlab">問題 <b id="qtruth">–</b> <span id="qsrc" hidden></span></div>
-      <div class="qhint">✍ この枠にも書ける</div>
+      <div class="qhint">✍ この枠にも書ける（書いた字は記録に残る）</div>
     </div>
     <div class="verdict" id="verdict">–</div>
     <div class="qbox" hidden>
@@ -280,6 +301,14 @@
 <p class="sub" data-tab="about">FlyWire の蠅の脳（キノコ体）が、サーバの上で休まず MNIST の手書き数字 1〜9 を練習している。
 1 枚ごとにまず答え、間違えたときだけドーパミンで直される。正答率はサーバで記録し続けている。
 このページの蠅は、そのサーバの蠅の最新の脳をブラウザに写したもの。</p>
+
+<div class="panel" data-tab="record">
+  <h2><span>みんなの手書き — 蠅はどう読んだか</span></h2>
+  <p class="note" id="drawtally" style="margin:0 0 10px">…</p>
+  <div class="dgrid" id="drawings"></div>
+  <p class="note">出題の枠に書かれた字（蠅が実際に見た小さな絵）と、蠅の答えの候補、答え合わせの結果。
+  打ち消し線は「ちがう」と言われた候補。書いた字はここで誰でも見られる形で残るが、<b>蠅の学習には使っていない</b>。</p>
+</div>
 
 <div class="panel" data-tab="record">
   <h2><span>サーバの蠅の成績</span><span class="live" id="livestate">…</span></h2>
@@ -354,9 +383,10 @@
 </div>
 
 <div id="brainwin" class="bwin" hidden>
-  <div class="bwhead" id="bwhead"><span class="bwtitle">🧠 脳の活動</span><span id="bwmode" class="bwmode">ふだん</span><button id="bwclose" class="bwclose" aria-label="閉じる">×</button></div>
+  <div class="bwhead" id="bwhead"><span class="bwtitle">🧠 脳の活動</span><span id="bwmode" class="bwmode">ふだん</span><button id="bwmin" class="bwclose" aria-label="コンパクト表示の切り替え">－</button><button id="bwclose" class="bwclose" aria-label="閉じる">×</button></div>
   <div class="bwbody">
     <canvas id="kcmini"></canvas>
+    <div id="bwstate" class="bwstate idle">ふだん（背景入力だけ）</div>
     <div class="bwrow"><span>投射 PN</span><canvas id="sp-pn"></canvas><em id="hz-pn">–</em></div>
     <div class="bwrow"><span>ケニヨン KC</span><canvas id="sp-kc"></canvas><em id="hz-kc">–</em></div>
     <div class="bwrow"><span>出力 MBON</span><canvas id="sp-mb"></canvas><em id="hz-mb">–</em></div>
@@ -384,7 +414,7 @@
 </nav>
 
 <script type="module">
-import { runPage } from '../juku/page.js?v=41';
+import { runPage } from '../juku/page.js?v=46';
 runPage({ course: 'suji', rows: ['123456789'], padInk: 17.7, pen: 0.085 });
 </script>
 </body>
