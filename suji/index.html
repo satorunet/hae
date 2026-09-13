@@ -72,6 +72,11 @@
   .dmarks b{color:#bff0d2}
   .dres{font-size:.64rem;color:#8a97a6}
   .panel.others{display:none}
+  .libs{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr;gap:6px}
+  .libs li{padding:8px 12px;border-radius:9px;background:#11161c;border:1px solid var(--line);font-size:.9rem}
+  .libs li a{color:#9fd0ff;text-decoration:none;font-weight:600}
+  .libs li small{display:block;color:var(--dim);font-size:.74rem;margin-top:1px}
+
   .olist{display:grid;grid-template-columns:1fr;gap:8px}
   .olist a{display:block;padding:11px 13px;border-radius:10px;background:#11161c;border:1px solid var(--line);text-decoration:none;color:var(--ink)}
   .olist a b{display:block;font-size:.95rem}
@@ -312,6 +317,7 @@
     .panel{margin-bottom:14px}
     body[data-tab="record"] .panel[data-tab="record"]:first-of-type{grid-column:1 / -1}
     .olist{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .libs{grid-template-columns:repeat(2,minmax(0,1fr))}
     .sub[data-tab="about"]{font-size:.9rem;max-width:760px}
   }
 </style>
@@ -475,6 +481,19 @@
     <a href="/meiro/"><b>迷路実験</b><small>脳で動く蠅と迷路</small></a>
     <a href="https://github.com/satorunet/hae" target="_blank" rel="noopener"><b>ソースコード（GitHub）</b><small>satorunet/hae — MIT ライセンス。学習済みの脳と学習記録も含む</small></a>
   </nav>
+  <h2 style="margin-top:18px"><span>使ったライブラリ・データ</span></h2>
+  <ul class="libs">
+    <li><a href="https://github.com/philshiu/Drosophila_brain_model" target="_blank" rel="noopener">Drosophila_brain_model</a><small>全脳の LIF モデル（Shiu et al., <i>Nature</i> 2024）— MIT。WebAssembly に書き直して使用</small></li>
+    <li><a href="https://codex.flywire.ai/" target="_blank" rel="noopener">FlyWire コネクトーム v783</a><small>13.9 万個の神経細胞と結合（Dorkenwald, Matsliah et al. 2024）— CC-BY 4.0</small></li>
+    <li><a href="https://github.com/flyconnectome/flywire_annotations" target="_blank" rel="noopener">flywire_annotations</a><small>細胞型の注釈（Schlegel et al. 2024）— CC-BY 4.0</small></li>
+    <li><a href="https://github.com/NeLy-EPFL/flygym" target="_blank" rel="noopener">flygym / NeuroMechFly v2</a><small>蠅の体の形・関節と歩行の CPG — Apache-2.0</small></li>
+    <li><a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><small>3D 表示 — MIT</small></li>
+    <li><a href="https://kanjivg.tagaini.net/" target="_blank" rel="noopener">KanjiVG</a><small>ひらがな・数字の書き順（© Ulrich Apel）— CC BY-SA 3.0</small></li>
+    <li><a href="https://fonts.google.com/?subset=japanese" target="_blank" rel="noopener">Google Fonts（日本語 40 書体）</a><small>ひらがなの練習とテストの字形 — SIL Open Font License</small></li>
+    <li><a href="http://yann.lecun.com/exdb/mnist/" target="_blank" rel="noopener">MNIST</a><small>手書き数字（12×12 に縮小）— CC BY-SA 3.0</small></li>
+    <li><a href="https://brian2.readthedocs.io/" target="_blank" rel="noopener">Brian2</a> · <a href="https://ziglang.org/" target="_blank" rel="noopener">Zig</a><small>開発時のみ: モデルの検証（Brian2）と WebAssembly のビルド（Zig 同梱の clang）</small></li>
+  </ul>
+  <p class="note">飛行・身づくろい・字を書く動き・キノコ体の学習規則はこのサイトで作ったもので、上のどれにも含まれていない。</p>
 </div>
 
 <footer data-tab="about">
