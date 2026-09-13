@@ -259,9 +259,9 @@
   <p id="status">脳を読み込んでいます…（30 MB ほど）</p>
   <p class="note" id="brainnote"></p>
   <p class="note" id="flynote">問題は MNIST のテストセット（練習には使わない 9,020 枚）から。
-  蠅はまず答えの数字を前脚で地面に書き、<b>その自分の字を旗にして掲げ</b>、少し振ってから下ろす。<b>正解なら餌（砂糖水の粒）が落ちてきて、歩いて行って口吻を伸ばして食べる。</b>
+  蠅は答えの数字を前脚で地面に書き、<b>足を戻してその上で待つ — そこで答え合わせ</b>。<b>正解なら餌（砂糖水の粒）が落ちてきて、歩いて行って口吻を伸ばして食べる。</b>
   体は他のページと同じ NeuroMechFly の骨格で、歩行は flygym の CPG ＋ MuJoCo で実測した体速度、
-  身づくろいと旗を持つ動作は前脚足先の逆運動学。</p>
+  身づくろいと字を書く動作は前脚足先の逆運動学。</p>
 </div>
 
 <p class="sub" data-tab="about">FlyWire の蠅の脳（キノコ体）が、サーバの上で休まず MNIST の手書き数字 1〜9 を練習している。
@@ -371,7 +371,7 @@
 </nav>
 
 <script type="module">
-import { runPage } from '../juku/page.js?v=35';
+import { runPage } from '../juku/page.js?v=36';
 runPage({ course: 'suji', rows: ['123456789'], padInk: 17.7, pen: 0.085 });
 </script>
 </body>

@@ -9,9 +9,9 @@
 // the flag riding where they meet.
 //
 // One answer runs as a little sequence: write the answer on the ground with a
-// front leg (in stroke order, from KanjiVG), put that very handwriting on the
-// flag and raise it, wave it, put it down, and - if the answer was right - walk
-// over to the drop of food that appears and eat it.
+// front leg (in stroke order, from KanjiVG), set the foot back down and wait
+// over the letter to be marked, and - if the answer was right - walk over to
+// the drop of food that appears and eat it.
 //
 // The skeleton's frame is z-up (as in MuJoCo and flygym), so this scene is too.
 import * as THREE from '../test03/vendor/three.module.min.js';
@@ -35,6 +35,7 @@ const POSE_TARGETS = {
   tuck: { f: [0.5, 0.28, -0.62], m: [-0.5, 0.42, -0.9], h: [-1.45, 0.3, -0.82] },   // folded up in flight (test03)
 };
 const WINGBEAT = 210;              // Hz, as in test03
+const WAIT_FOR = 1.8;              // seconds it waits over what it wrote, unless held
 const FLY_ROAM = 9;                // flights stay inside this radius, mm (walking keeps to ROAM)
 
 export class FlagFly {
@@ -220,17 +221,19 @@ export class FlagFly {
   }
 
   /**
-   * Answer `digit`: write it, raise a flag with that writing on it, then put it
-   * down; if `correct`, food appears and it goes and eats. `sure` in 0..1: a
-   * low value raises it slowly and wobbles. With `hold` the flag stays up until
-   * release(). If a flag is already up it comes down first.
+   * Answer `digit`: write it on the ground, put the foot down and wait over it;
+   * `onWritten` is called at that moment - that is when the answer is there to
+   * be marked. If `correct`, food appears after the wait and it goes and eats.
+   * With `hold` it waits until release(). A letter already on the ground is
+   * wiped for the new one.
    */
-  show(digit, sure = 1, correct = false, hold = false) {
+  show(digit, sure = 1, correct = false, hold = false, onWritten = null) {
     if (this.fl) {                 // in the air: come down first, then answer
       this.fl.hurry = true;
-      this.afterLand = () => this.show(digit, sure, correct, hold);
+      this.afterLand = () => this.show(digit, sure, correct, hold, onWritten);
       return;
     }
+    this.onWritten = onWritten;
     // it cocks its head as it answers - more often when it is unsure
     if (Math.random() < 0.45 + 0.4 * (1 - clamp(sure, 0, 1))) this.cock(0.45 + 0.3 * Math.random());
     this.hold = !!hold;
@@ -243,17 +246,26 @@ export class FlagFly {
       this.pending = null; this.pen = null;
       this.setDigit(digit, this.sure);
       this.raiseFlag();
+      this.written();
       return;
     }
     this.pending = P;
     if (this.lift > 0.002) { this.want = 0; this.setPhase('lowering'); }
-    else this.startWriting();
+    else this.startWriting();       // (a letter it was waiting over is wiped for this one)
+  }
+  written() {
+    const cb = this.onWritten; this.onWritten = null;
+    if (cb) cb();
   }
   startWriting() {
     this.pen = this.pending; this.pending = null;
     this.flag.group.visible = false;
     this.inkClear(); this.ink.life = 1; this.ink.mesh.material.opacity = 0.95;
     this.setPhase('writing');
+  }
+  endWait() {
+    if (this.reward) { this.dropFood(); this.setPhase('toFood'); } else this.setPhase('idle');
+    this.setAct('stand', rnd(0.8, 1.6));
   }
   raiseFlag() {
     this.flag.group.visible = true;
@@ -269,9 +281,10 @@ export class FlagFly {
     this.hold = false;
     if (this.phase === 'toFood' || this.phase === 'feeding') return;
     if (this.pending || this.phase === 'writing' || this.phase === 'showing') {
-      this.reward = !!correct;     // it still raises what it wrote, briefly, then eats
+      this.reward = !!correct;     // it finishes writing, waits a moment, then eats
       return;
     }
+    if (this.phase === 'waiting') { this.reward = !!correct; this.endWait(); return; }
     if (this.phase === 'idle') {
       if (correct) { this.setAct('stand', 6); this.dropFood(); this.setPhase('toFood'); }
       return;
@@ -281,12 +294,13 @@ export class FlagFly {
   /** A question is being worked on: stop wandering and stand ready. */
   think() {
     this.want = 0; this.digit = null; this.reward = false; this.hold = false;
-    this.pending = null; this.pen = null;
+    this.pending = null; this.pen = null; this.onWritten = null;
     this.setPhase('lowering'); this.setAct('stand', 4);
   }
   /** Put everything away and carry on being a fly. */
   lower() {
     this.want = 0; this.reward = false; this.hold = false; this.pending = null; this.pen = null;
+    this.onWritten = null;
     this.setPhase('lowering'); this.actT = 0;
   }
 
@@ -506,18 +520,15 @@ export class FlagFly {
     const k = ease(this.lift);
     const holding = this.lift > 0.002;
 
-    // writing the answer, a glance at it, then up it goes on the flag
+    // writing the answer, the foot back down, then waiting over it to be marked
     if (this.phase === 'writing') {
       this.pen.t += dt;
-      if (this.pen.t >= this.pen.T[this.pen.T.length - 1]) { this.setPhase('showing'); this.cock(0.5); }
+      if (this.pen.t >= this.pen.T[this.pen.T.length - 1]) { this.setPhase('waiting'); this.cock(0.45); this.written(); }
     }
-    if (this.phase === 'showing' && this.phaseT > 0.5) {
-      this.setHand(this.pen.runs, this.sure);
-      this.raiseFlag();
-    }
-    if (this.ink.n && this.phase !== 'writing' && this.phase !== 'showing') {
-      // the writing on the ground fades as the flag with it goes up
-      this.ink.life = Math.max(0, this.ink.life - dt / 1.1);
+    if (this.phase === 'waiting' && !this.hold && this.phaseT > WAIT_FOR) this.endWait();
+    if (this.ink.n && this.phase !== 'writing' && this.phase !== 'waiting') {
+      // once it has been marked the letter fades
+      this.ink.life = Math.max(0, this.ink.life - dt / 1.6);
       this.ink.mesh.material.opacity = 0.95 * Math.min(1, this.ink.life * 2.5);
       if (this.ink.life <= 0) this.inkClear();
     }
@@ -540,7 +551,7 @@ export class FlagFly {
     }
 
     // ---------------------------------------------------------- idle behaviour
-    const writing = this.phase === 'writing' || this.phase === 'showing';
+    const writing = this.phase === 'writing' || this.phase === 'waiting';
     const answering = holding || this.phase === 'toFood' || feeding || writing;
     this.actT -= dt;
     if (!answering && !this.fl && this.actT <= 0) this.chooseAct();

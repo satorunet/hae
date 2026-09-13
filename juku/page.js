@@ -1,7 +1,7 @@
 // What /suji/ and /hiragana/ share: the server's record, a copy of the
 // server's fly answering questions in the browser, and writing your own letter
 // in the question box for it to read.
-import { FlagFly } from '../suji/flag.js?v=32';
+import { FlagFly } from '../suji/flag.js?v=33';
 import { RecordChart, COLORS } from './chart.js?v=3';
 import { normalise } from '../hiragana/kana.mjs?v=2';
 
@@ -399,8 +399,12 @@ export function runPage(o) {
     const c = handCands[handK];
     $('#qans').textContent = labels[c];
     setGuess(labels[c]);
-    if (fly) fly.show(labels[c], handK === 0 ? handSure : 0.25, false, true);
-    showJudge(true);
+    // the fly writes it on the ground; you mark it once it has put its foot down and waits
+    showJudge(false);
+    if (fly) fly.show(labels[c], handK === 0 ? handSure : 0.25, false, true, () => {
+      if (handCands[handK] === c) { showJudge(true); $('#status').textContent = `蠅は「${labels[c]}」と書いて待っている。合っていたら ○、ちがったら ×。`; }
+    });
+    else showJudge(true);
   }
   function finishHand(msg) {
     showJudge(false); handCands = [];
@@ -601,14 +605,18 @@ export function runPage(o) {
       lastDrive = m.drive; lastAnswer = m.answer; lastSlots = m.slots;
       lastAllowed = [...Array(unlocked()).keys()];
       const ok = m.answer === m.truth;
-      asked++; if (ok) right++; hist.push(ok); drawTally();
       $('#qans').textContent = labels[m.answer];
-      const v = $('#verdict'); v.textContent = ok ? '○' : '×'; v.className = 'verdict ' + (ok ? 'ok' : 'no');
-      if (fly) fly.show(labels[m.answer], Math.min(1, m.margin / 0.03), ok);
+      // marked when the fly has written its answer on the ground and is waiting over it
+      const mark = () => {
+        asked++; if (ok) right++; hist.push(ok); drawTally();
+        const v = $('#verdict'); v.textContent = ok ? '○' : '×'; v.className = 'verdict ' + (ok ? 'ok' : 'no');
+        $('#status').textContent = (ok ? `「${labels[m.answer]}」— 正解。餌が出る。` : `「${labels[m.answer]}」— 不正解、本当は「${labels[m.truth]}」。`) +
+          `次の候補は「${labels[m.second]}」`;
+      };
+      $('#status').textContent = '蠅が答えを地面に書いている…';
+      if (fly) fly.show(labels[m.answer], Math.min(1, m.margin / 0.03), ok, false, mark); else mark();
       drawBars(); drawKC();
       busy = false;
-      $('#status').textContent = (ok ? '正解。餌が出る。' : `不正解 — 本当は「${labels[m.truth]}」。`) +
-        `次の候補は「${labels[m.second]}」`;
       if (auto) nextQuestion(600, true);
     }
   }
@@ -625,7 +633,8 @@ export function runPage(o) {
         $('#verdict').textContent = '?'; $('#verdict').className = 'verdict';
         clearTimeout(backTimer);
         holdCandidate();
-        $('#status').textContent = `蠅の答えは「${labels[m.answer]}」。合っていたら ○、ちがったら ×（次の候補を出す）。`;
+        if (!$('#judge').hidden) $('#status').textContent = `蠅の答えは「${labels[m.answer]}」。合っていたら ○、ちがったら ×（次の候補を出す）。`;
+        else $('#status').textContent = '蠅が地面に書いている…';
       } else if (!hand && fly) fly.show(labels[m.answer], Math.min(1, m.margin / 0.03), false);
       drawBars(); drawKC();
       busy = false;
