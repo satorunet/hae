@@ -187,7 +187,9 @@ export function runPage(o) {
   // picture arrives and a sparse set of them lights up. Each question's 400 ms
   // is replayed in slow motion before the fly gives its answer.
   let brainOn = false, replaying = false, bwMode = 'idle';
-  try { brainOn = localStorage.getItem('hae-brain-pop') === '1'; } catch { /* no storage */ }
+  // open by default; closing it is remembered (a new key, so earlier "closed" choices don't carry over)
+  brainOn = true;
+  try { brainOn = localStorage.getItem('hae-brain-open') !== '0'; } catch { /* no storage */ }
   const SERIES = 90;                              // samples kept for the traces
   const series = [];                              // {pn, kc, mb, mode}
   let heat = null, heatT = 0, rafOn = false;
@@ -204,7 +206,7 @@ export function runPage(o) {
   }
   function setBrain(on) {
     brainOn = on;
-    try { localStorage.setItem('hae-brain-pop', on ? '1' : '0'); } catch { /* no storage */ }
+    try { localStorage.setItem('hae-brain-open', on ? '1' : '0'); } catch { /* no storage */ }
     $('#brainbtn').setAttribute('aria-pressed', String(on));
     const win = $('#brainwin');
     win.hidden = !on;
