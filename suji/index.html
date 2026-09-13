@@ -167,7 +167,7 @@
   <div class="quizrow">
     <div class="qbox">
       <div class="qdraw"><button class="xclear" hidden aria-label="消す">×</button><canvas id="q" width="12" height="12"></canvas><canvas id="qpad" width="264" height="264" title="ここに字を書くと蠅が読む"></canvas></div>
-      <div class="qlab">問題 <b id="qtruth">–</b><span id="qsrc" hidden></span></div>
+      <div class="qlab">問題 <b id="qtruth">–</b> <span id="qsrc" hidden></span></div>
       <div class="qhint">✍ この枠にも書ける</div>
     </div>
     <div class="verdict" id="verdict">–</div>
@@ -314,7 +314,7 @@
 </footer>
 
 <script type="module">
-import { runPage } from '../juku/page.js?v=29';
+import { runPage } from '../juku/page.js?v=33';
 runPage({ course: 'suji', rows: ['123456789'], padInk: 17.7, pen: 0.085 });
 </script>
 </body>

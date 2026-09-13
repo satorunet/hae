@@ -35,6 +35,7 @@ const POSE_TARGETS = {
   tuck: { f: [0.5, 0.28, -0.62], m: [-0.5, 0.42, -0.9], h: [-1.45, 0.3, -0.82] },   // folded up in flight (test03)
 };
 const WINGBEAT = 210;              // Hz, as in test03
+const FLY_ROAM = 9;                // flights stay inside this radius, mm (walking keeps to ROAM)
 
 export class FlagFly {
   constructor(canvas) {
@@ -111,8 +112,10 @@ export class FlagFly {
     this.camera = new THREE.PerspectiveCamera(32, 1.6, 0.05, 200);
     this.camera.up.set(0, 0, 1);
 
-    scene.add(new THREE.Mesh(new THREE.CircleGeometry(16, 56),
-      new THREE.MeshStandardMaterial({ color: 0x1a212a, roughness: 0.96 })));
+    // the ground: wide enough for a flight seen from above, with faint blotches so
+    // movement over it reads
+    scene.add(new THREE.Mesh(new THREE.CircleGeometry(60, 72),
+      new THREE.MeshStandardMaterial({ color: 0x1a212a, roughness: 0.96, map: groundTexture() })));
 
     this.body = new FlyBody(J, bin, { ghosts: 4 });
     scene.add(this.body.root);
@@ -313,15 +316,20 @@ export class FlagFly {
   // test03 (210 Hz, blurred), legs folded up in the air and reaching out for
   // the landing. Hand-made, like all flight on this site: flygym has none.
   startFlight() {
-    const ang = rnd(0, TAU), d = rnd(1.4, 2.8);
+    // a real trip: several body lengths away, high up (the camera pulls back for it)
+    const ang = rnd(0, TAU), d = rnd(4, 8);
     let x1 = this.x + Math.cos(ang) * d, y1 = this.y + Math.sin(ang) * d;
     const rr = Math.hypot(x1, y1);
-    if (rr > ROAM) { x1 *= ROAM / rr; y1 *= ROAM / rr; }
-    this.fl = { t: 0, x0: this.x, y0: this.y, x1, y1, h: rnd(1.2, 2.6), T: rnd(1.8, 3.2), yaw1: this.yaw + rnd(-1.6, 1.6) };
+    if (rr > FLY_ROAM) { x1 *= FLY_ROAM / rr; y1 *= FLY_ROAM / rr; }
+    const dist = Math.hypot(x1 - this.x, y1 - this.y);
+    this.fl = { t: 0, x0: this.x, y0: this.y, x1, y1, h: rnd(2.5, 5), T: 1.4 + dist / rnd(3.5, 5), yaw1: this.yaw + rnd(-1.6, 1.6) };
     this.setAct('fly', 99);
   }
   stepFlight(dt) {
     const F = this.fl;
+    if (this.lift > 0 || this.flag.group.visible) {   // nothing is carried into the air
+      this.lift = 0; this.want = 0; this.flag.group.visible = false;
+    }
     if (F.hurry && F.t < F.T - 0.6) F.T = Math.max(F.t + 0.6, 0.9);   // asked a question: cut it short
     F.t += dt;
     const T = F.T, t = F.t;
@@ -346,6 +354,7 @@ export class FlagFly {
     if (t >= T + 0.25) {
       this.fl = null; this.alt = 0; this.flySpeed = 0;
       this.setAct('stand', rnd(0.6, 1.4));
+      this.landedAt = this.t;
       if (this.afterLand) { const go = this.afterLand; this.afterLand = null; go(); }
       else if (Math.random() < 0.5) this.cock(0.5);
     }
@@ -743,22 +752,49 @@ export class FlagFly {
     let ty = this.food.mesh.visible ? (this.y + this.food.y) / 2 : this.y;
     if (writing && this.pen) { tx = (this.x + this.pen.centre[0]) / 2; ty = (this.y + this.pen.centre[1]) / 2; }
     const wide = this.food.mesh.visible ? 1.1 : 0;
-    this.look.x += (tx * 0.85 - this.look.x) * Math.min(1, dt * 2.2);
-    this.look.y += (ty * 0.85 - this.look.y) * Math.min(1, dt * 2.2);
+    // in flight the view pulls far back and up, looking down on the whole trip;
+    // it comes back in close once the fly has landed (and for reading and writing)
+    this.flyW = approach(this.flyW || 0, this.fl && !this.fl.hurry ? 1 : 0, dt, this.fl ? 0.7 : 0.9);
+    const fw = this.flyW;
+    const fx = this.fl ? (this.fl.x0 + this.fl.x1) / 2 : this.x, fy = this.fl ? (this.fl.y0 + this.fl.y1) / 2 : this.y;
+    tx += (0.5 * this.x + 0.5 * fx - tx) * fw; ty += (0.5 * this.y + 0.5 * fy - ty) * fw;
+    const follow = this.fl ? 3.5 : 2.2;
+    this.look.x += (tx * (0.85 + 0.15 * fw) - this.look.x) * Math.min(1, dt * follow);
+    this.look.y += (ty * (0.85 + 0.15 * fw) - this.look.y) * Math.min(1, dt * follow);
     // while it writes and shows the letter, the camera climbs to look down on the page
     this.writeW = approach(this.writeW || 0, writing ? 1 : 0, dt, 0.5);
     const vw = this.writeW;
-    this.look.z += (0.8 + 1.7 * k - 0.6 * vw + 0.8 * this.alt - this.look.z) * Math.min(1, dt * 3);
-    this.camAng += wrap(this.yaw + CAM_OFF - this.camAng) * Math.min(1, dt * 1.4);
-    const r = 5.8 + 1.2 * k + wide - 2.0 * vw;
+    this.look.z += (0.8 + 1.7 * k - 0.6 * vw + (0.8 - 0.5 * fw) * this.alt - this.look.z) * Math.min(1, dt * 3);
+    this.camAng += wrap(this.yaw + CAM_OFF - this.camAng) * Math.min(1, dt * 1.4 * (1 - 0.85 * fw));   // no swinging round mid-flight
+    const r = 5.8 + 1.2 * k + wide - 2.0 * vw + 17 * fw;
     this.camera.position.set(this.look.x + Math.cos(this.camAng) * r,
-      this.look.y + Math.sin(this.camAng) * r, 1.5 + 1.3 * k + 3.4 * vw + 0.9 * this.alt);
+      this.look.y + Math.sin(this.camAng) * r, 1.5 + 1.3 * k + 3.4 * vw + 0.9 * this.alt * (1 - fw) + 24 * fw);
     this.camera.lookAt(this.look);
     // the key light rides with the camera, so the fly is never left backlit
     this.sun.position.set(this.look.x + Math.cos(this.camAng + 0.8) * 9,
       this.look.y + Math.sin(this.camAng + 0.8) * 9, 10);
     this.renderer.render(this.scene, this.camera);
   };
+}
+
+function groundTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 260; i++) {                  // soft darker and lighter blotches, tiling
+    const x = Math.random() * 256, y = Math.random() * 256, r = 2 + Math.random() * 16;
+    const light = Math.random() < 0.4;
+    g.fillStyle = light ? 'rgba(255,255,255,0.10)' : `rgba(0,0,0,${0.05 + Math.random() * 0.1})`;
+    for (const [dx, dy] of [[0, 0], [256, 0], [-256, 0], [0, 256], [0, -256]]) {
+      g.beginPath(); g.arc(x + dx, y + dy, r, 0, TAU); g.fill();
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(10, 10);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 const AY = new THREE.Vector3(0, 1, 0), AZ = new THREE.Vector3(0, 0, 1);

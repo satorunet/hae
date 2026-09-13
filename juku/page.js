@@ -1,6 +1,6 @@
 // What /suji/ and /hiragana/ share: the server's record, a copy of the
 // server's fly answering questions in the browser, and a drawing pad.
-import { FlagFly } from '../suji/flag.js?v=28';
+import { FlagFly } from '../suji/flag.js?v=30';
 import { RecordChart, COLORS } from './chart.js?v=3';
 import { normalise } from '../hiragana/kana.mjs?v=2';
 
@@ -109,7 +109,7 @@ export function runPage(o) {
       showJudge(false); handCands = [];
       if (fly && fly.hold) fly.release(false);
       strokes = []; redrawPad();
-      if (o.course === 'suji') $('#qsrc').hidden = true;
+      $('#qsrc').hidden = true;
     }
     auto = on;
     $('#autobtn').textContent = on ? '自動停止' : '自動出題';
@@ -218,7 +218,14 @@ export function runPage(o) {
     const win = $('#brainwin'), w = win.offsetWidth || 300, h = win.offsetHeight || 320;
     let p = pos;
     if (!p) { try { p = JSON.parse(localStorage.getItem('hae-brain-win') || 'null'); } catch { p = null; } }
-    if (!p) { const r = $('.flywrap').getBoundingClientRect(); p = { x: r.right - w - 8, y: Math.max(8, r.top + 8) }; }
+    if (!p) {
+      // first time: outside the fly's view, top right - beside the page where there is room,
+      // otherwise in the top-right corner of the screen
+      const panel = $('.flywrap').closest('.panel').getBoundingClientRect();
+      p = innerWidth - panel.right >= w + 24
+        ? { x: panel.right + 16, y: Math.max(8, panel.top) }
+        : { x: innerWidth - w - 8, y: 8 };
+    }
     const x = Math.min(Math.max(4, p.x), innerWidth - w - 4), y = Math.min(Math.max(4, p.y), innerHeight - 40);
     win.style.left = x + 'px'; win.style.top = y + 'px';
     return { x, y };
@@ -441,7 +448,7 @@ export function runPage(o) {
     showJudge(false); handCands = [];
     if (fly && fly.hold) fly.release(false);
     strokes = []; redrawPad();
-    if (o.course === 'suji') $('#qsrc').hidden = true;
+    $('#qsrc').hidden = true;
     if (handWasAuto) setAuto(true);
   }
   const HAND_IDLE = 40e3;
@@ -563,7 +570,6 @@ export function runPage(o) {
       // the question goes up at once; the answer comes after the brain has been watched working on it
       drawPixels($('#q'), m.img);
       $('#qtruth').textContent = labels[m.truth];
-      $('#qsrc').textContent = m.source;
       $('#qans').textContent = '…';
       $('#verdict').textContent = '–'; $('#verdict').className = 'verdict';
       if (brainOn) $('#status').textContent = '問題を見ている…';
