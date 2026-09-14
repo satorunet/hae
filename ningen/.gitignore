@@ -1,0 +1,4 @@
+# the school's running state (the learned brains, logs, recorded motion): changes all the time, kept on the server
+school/state/
+MUJOCO_LOG.TXT
+__pycache__/

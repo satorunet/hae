@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>人体を制御するハエ脳実験</title>
+<meta name="description" content="FlyWire の蠅の全脳が、416 本の筋肉を持つ人体モデルをブラウザの中でリアルタイムに動かす実験。">
+<meta name="robots" content="noindex">
+<meta property="og:title" content="人体を制御するハエ脳実験">
+<meta property="og:description" content="FlyWire の蠅の全脳（13.9 万ニューロン）が、416 本の筋肉を持つ人体を動かす。匂い・音・味から這い寄って食べ、転んでは起き上がり、その使い方を学習していく実験。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="hae.satoru.net">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:url" content="https://hae.satoru.net/ningen/">
+<meta property="og:image" content="https://hae.satoru.net/og-ningen.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="頭にハエの脳が光る人が四つん這いで床の蜜へ向かう">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="人体を制御するハエ脳実験">
+<meta name="twitter:image" content="https://hae.satoru.net/og-ningen.jpg">
+<style>
+  :root{
+    --bg:#0d1014; --panel:#151a20; --well:#07090c; --line:#252d36; --ink:#e6edf3; --dim:#8a97a6; --faint:#5d6875;
+    --eye:#9fd0ff; --good:#54d98c; --warm:#ffb454; --hot:#ff6b6b;
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.65 system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+    padding-block:18px 36px;padding-inline:16px;-webkit-text-size-adjust:100%}
+  .wrap{max-width:1180px;margin-inline:auto;display:grid;gap:14px}
+  .eyebrow{font:600 .72rem/1 ui-monospace,Menlo,monospace;letter-spacing:.12em;color:var(--dim)}
+  h1{margin:0;font-size:clamp(1.35rem,2.6vw,1.8rem);line-height:1.25;text-wrap:balance}
+  .lede{margin:0;color:#c3cfdb;font-size:.9rem}
+  /* the page's name, one compact line above the scene, and what to do, under it */
+  .pagetitle{margin:0;font-size:clamp(1rem,2.2vw,1.2rem);line-height:1.3;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .intro{margin:-6px 0 0;font-size:.84rem;line-height:1.55;color:#c3cfdb}
+  .main{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:14px;align-items:start}
+  @media (max-width:900px){.main{grid-template-columns:1fr}}
+  .stage{position:relative;background:radial-gradient(120% 90% at 50% 20%,#18202a 0%,var(--well) 70%);border:1px solid var(--line);border-radius:12px;overflow:hidden;aspect-ratio:4/3;max-width:100%;touch-action:none}
+  .stage,.stage *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}   /* taps and drags on the scene must never select anything */
+  .stage canvas{display:block;width:100%;height:100%;cursor:grab}
+  .chip{position:absolute;padding:5px 11px;border-radius:999px;background:rgba(9,12,16,.78);border:1px solid #2b3642;font-size:.82rem;color:#dbe5ee}
+  .chip.tl{left:12px;top:12px;max-width:calc(100% - 172px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chip small{color:#8a97a6;margin-left:6px;font-size:.74rem}
+  .chip b{color:#fff;font-weight:600}
+  /* the fly's brain at a glance: its 139k neurons where they sit, lit as they fire */
+  .brainmini{position:absolute;right:10px;top:10px;width:176px;padding:5px 6px;border-radius:8px;background:rgba(7,9,12,.8);border:1px solid #2b3642;pointer-events:none}
+  .brainmini canvas{display:block;width:100%;height:auto;aspect-ratio:2.08}
+  /* under it, in words: the motor programs running now */
+  .brainmini .state{margin-top:3px;font-size:.7rem;line-height:1.3;color:#dbe5ee;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .brainmini .state + .state{margin-top:1px;color:#ffd79a}
+  .brainmini .lvmini{pointer-events:auto;display:flex;align-items:center;gap:5px;margin-top:4px;font-size:.7rem;color:#ffd79a}
+  .brainmini .lvmini select{flex:1;min-width:0;font:inherit;color:#ffd79a;background:#141a20;border:1px solid #3a4652;border-radius:6px;padding:3px 4px;min-height:28px;cursor:pointer}
+  .brainmini .lvmini select:disabled{opacity:.6;cursor:default}
+  @media (max-width:560px){.brainmini{width:130px}.brainmini .state{font-size:.64rem}.chip.tl{max-width:calc(100% - 158px)}}
+  /* how a trial ended, over the scene; and a short note that its data went to the school */
+  .banner{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:5;display:flex;flex-direction:column;align-items:center;gap:10px;
+    padding:14px 22px;border-radius:14px;background:rgba(9,12,16,.88);border:1px solid #2b3642;text-align:center;max-width:calc(100% - 32px)}
+  .banner b{font-size:1.5rem;line-height:1.25}
+  .banner.ok{border-color:#2f6b49} .banner.ok b{color:var(--good)}
+  .banner.ng{border-color:#6b2f35} .banner.ng b{color:var(--hot)}
+  .banner button{font:inherit;font-size:1rem;color:var(--ink);background:#26303a;border:1px solid #3a4652;border-radius:10px;padding:8px 26px;min-height:44px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .banner button:hover{background:#303b46}
+  /* watching a recorded trial again: what it is and its controls, in a bar under the scene (never over it) */
+  .replaybar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:8px;padding:8px 10px;border-radius:12px;background:var(--panel);border:1px solid #3a6b8f;font-size:.8rem}
+  .replaybar .rbtitle{flex:1 1 100%;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#d4ecff;font-weight:600}
+  .replaybar .rbcase{display:inline-flex;gap:6px}
+  .replaybar .rbcase button:disabled{opacity:.4;cursor:default}
+  .replaybar input[type=range]{flex:1 1 120px;min-width:80px;accent-color:var(--eye)}
+  .replaybar .rbtime{font:400 .74rem ui-monospace,Menlo,monospace;color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums}
+  .replaybar button{font:inherit;font-size:.8rem;color:var(--ink);background:#1b2229;border:1px solid var(--line);border-radius:8px;padding:5px 10px;min-height:34px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .replaybar button:hover{background:#232c35}
+  .replaybar #rbplay{width:40px;padding:0}
+  .replaybar .rbspeed{display:flex;gap:4px}
+  .replaybar .rbspeed button[aria-pressed="true"]{border-color:var(--eye);color:#d4ecff;background:#1c2a36}
+  .replaybar #rblive{margin-left:auto;border-color:#3a6b8f}
+  .stage.replaying .foods,.stage.replaying .toast{display:none}
+  .stage.replaying .brainmini canvas{opacity:.35}
+  .toast{position:absolute;left:12px;bottom:12px;z-index:5;padding:5px 12px;border-radius:999px;background:rgba(9,12,16,.88);border:1px solid #2f6b49;color:#bff0d2;font-size:.76rem;white-space:nowrap;pointer-events:none}
+  /* what a tap drops */
+  .foods{position:absolute;right:10px;bottom:10px;display:flex;align-items:center;gap:6px;padding:5px;border-radius:999px;background:rgba(9,12,16,.78);border:1px solid #2b3642}
+  /* closed: only the food a tap drops, and the menu button; open: all three to choose from */
+  .foods:not(.open) [data-food][aria-pressed="false"]{display:none}
+  .foods:not(.open) [data-food]{cursor:default}
+  .foods button{display:grid;place-items:center;width:46px;height:46px;padding:0;border-radius:50%;border:2px solid transparent;background:#1b2229;color:var(--ink);font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .foods button span{font-size:1.35rem;line-height:1}
+  .foods button small{font-size:.6rem;line-height:1;color:var(--dim);margin-top:-6px}
+  .foods button:hover{background:#232c35}
+  .foods button[aria-pressed="true"]{border-color:var(--warm);background:#2a2418}
+  .foods button[aria-pressed="true"] small{color:var(--warm)}
+  .foods .more{width:26px;border-radius:13px;background:transparent}
+  .foods .more i{display:block;width:4px;height:18px;background:radial-gradient(circle,var(--dim) 1.9px,transparent 2.2px) 0 0/4px 6px repeat-y}   /* three dots, one above the other */
+  .foods .more[aria-expanded="true"]{background:#26303a}
+  .foods .more[aria-expanded="true"] i{background-image:radial-gradient(circle,var(--ink) 1.9px,transparent 2.2px)}
+  @media (max-width:560px){.foods button{width:40px;height:40px}.foods button span{font-size:1.15rem}.foods .more{width:24px}}
+  /* a phone turned sideways: the scene takes the whole screen (clear of the notch and rounded corners) */
+  @media (orientation:landscape) and (max-height:600px){
+    body{overflow:hidden}
+    .stage{position:fixed;inset:0;z-index:10;aspect-ratio:auto;max-width:none;border:0;border-radius:0}
+    .pagetitle,.intro{display:none}
+    .chip.tl{left:max(12px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top))}
+    .toast{left:max(12px,env(safe-area-inset-left));bottom:max(12px,env(safe-area-inset-bottom))}
+    /* the replay bar: one slim translucent row along the bottom edge */
+    .replaybar{position:fixed;z-index:11;left:0;right:0;bottom:0;margin:0;flex-wrap:nowrap;gap:6px;border:0;border-top:1px solid rgba(58,107,143,.6);border-radius:0;
+      background:rgba(9,12,16,.62);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);font-size:.74rem;
+      padding:3px max(10px,env(safe-area-inset-right)) max(3px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left))}
+    .replaybar .rbtitle{flex:0 1 auto;max-width:30%}
+    .replaybar button{min-height:28px;padding:2px 8px;font-size:.74rem}
+    .replaybar #rbplay{width:32px}
+    .replaybar #rblive{margin-left:0}
+    .brainmini{right:max(10px,env(safe-area-inset-right));top:max(10px,env(safe-area-inset-top))}
+    .foods{right:max(10px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom))}
+  }
+  .loading{position:absolute;inset:0;display:grid;place-content:center;gap:10px;text-align:center;color:var(--dim);font-size:.9rem;background:rgba(7,9,12,.6)}
+  .loading i{display:block;width:220px;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+  .loading i::after{content:"";display:block;height:100%;width:var(--p,0%);background:var(--eye);transition:width .2s}
+  :focus-visible{outline:2px solid var(--eye);outline-offset:2px}
+  aside{display:grid;gap:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px}
+  h2{margin:0 0 9px;font:600 .72rem/1.2 ui-monospace,Menlo,monospace;letter-spacing:.1em;color:var(--dim)}
+  .meters{display:grid;gap:6px}
+  .meter{display:grid;grid-template-columns:120px 1fr 52px;gap:8px;align-items:center;font-size:.78rem}
+  .meter .n{color:var(--dim)} .meter .n b{color:var(--ink);font-weight:500}
+  .meter .v{font:400 .72rem ui-monospace,Menlo,monospace;text-align:right;color:var(--dim);font-variant-numeric:tabular-nums}
+  .meter i{display:block;height:8px;border-radius:4px;background:var(--well);position:relative;overflow:hidden}
+  .meter i::after{content:"";position:absolute;inset:0 auto 0 0;width:var(--w,0%);background:var(--c,var(--eye));border-radius:4px}
+  .sep{height:1px;background:var(--line);margin:8px 0}
+  .progs{display:flex;flex-wrap:wrap;gap:6px}
+  .prog{padding:4px 10px;border-radius:999px;border:1px solid var(--line);font-size:.78rem;color:var(--faint)}
+  .prog.on{color:var(--bg);background:var(--c);border-color:var(--c)}
+  .kv{display:grid;grid-template-columns:1fr auto;gap:3px 10px;font-size:.78rem}
+  .kv span:nth-child(odd){color:var(--dim)} .kv span:nth-child(even){font:400 .76rem ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;text-align:right}
+  .panel{display:grid;gap:12px}
+  .about{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px;gap:8px;font-size:.8rem;color:var(--dim)}
+  .about p{margin:0} .about b{color:#c3cfdb} .about .lede{font-size:.84rem}
+  .err{color:var(--hot);font-size:.85rem;white-space:pre-wrap}
+  /* ---------------- one part of the page at a time, chosen in the tab bar (as on the site's top page) ---------------- */
+  body[data-tab="play"] [data-tab]:not([data-tab="play"]),
+  body[data-tab="record"] [data-tab]:not([data-tab="record"]),
+  body[data-tab="about"] [data-tab]:not([data-tab="about"]),
+  body[data-tab="other"] [data-tab]:not([data-tab="other"]){display:none}
+  .sheet{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px;gap:10px}
+  .sheet h2{margin:6px 0 0}
+  .note{margin:0;font-size:.82rem;color:var(--dim)} .note b{color:#c3cfdb}
+  /* record */
+  #rec{gap:10px}
+  .lvrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;font-size:.84rem}
+  .lvrow label{color:var(--dim)}
+  .lvrow select{font:inherit;font-size:.9rem;color:var(--ink);background:#1b2229;border:1px solid var(--line);border-radius:8px;padding:6px 10px;min-height:38px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px}
+  .stat{background:#11161c;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+  .stat .k{font-size:.72rem;color:var(--dim)}
+  .stat .v{font-size:1.45rem;font-weight:600;line-height:1.2;font-variant-numeric:tabular-nums}
+  .stat .s{font-size:.68rem;color:var(--faint)}
+  .recchart svg{display:block;width:100%;height:190px;border-radius:6px;background:var(--well)}
+  .axis{display:flex;justify-content:space-between;font-size:.7rem;color:var(--faint);margin-top:3px;font-variant-numeric:tabular-nums}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.76rem;color:var(--dim);margin-top:6px}
+  .legend i{display:inline-block;width:10px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+  .choices{width:100%;border-collapse:collapse;font-size:.84rem}
+  .choices th{width:3em;text-align:left;font-weight:600;color:var(--warm);padding:7px 0;vertical-align:top;border-top:1px solid var(--line)}
+  .choices td{padding:7px 0;border-top:1px solid var(--line)}
+  .choices thead td.dh{font-size:.72rem;color:var(--dim);padding:0 10px 4px 0;border-top:0}
+  .choices td{padding-right:10px;vertical-align:top}
+  h2 .when{margin-left:8px;font:400 .72rem system-ui,sans-serif;letter-spacing:0;color:var(--faint)}
+  .choices small,.strats small{display:block;color:var(--dim);font-size:.74rem}
+  .strats{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+  .strats li{padding:7px 11px;border-radius:9px;background:#11161c;border:1px solid var(--line);font-size:.86rem}
+  .strats li.on{border-color:#6a5230}
+  .opts summary{cursor:pointer;font-size:.84rem;color:var(--dim);padding:6px 0}
+  .opts[open] summary{margin-bottom:4px}
+  .opts h2{margin:10px 0 6px}
+  .trials{list-style:none;margin:0;padding:0;display:grid;gap:5px}
+  .trow{display:grid;grid-template-columns:auto auto 1fr auto;align-items:center;gap:2px 8px;width:100%;text-align:left;font:inherit;font-size:.8rem;color:var(--ink);
+    padding:7px 10px;border-radius:9px;background:#11161c;border:1px solid var(--line);-webkit-tap-highlight-color:transparent}
+  button.trow{cursor:pointer} button.trow:hover{border-color:#3a6b8f;background:#141b22}
+  .trow .tn{font:400 .72rem ui-monospace,Menlo,monospace;color:var(--dim);font-variant-numeric:tabular-nums}
+  .trow .tw{font-size:.68rem;padding:1px 7px;border-radius:999px;border:1px solid var(--line);color:var(--dim)}
+  .trow .tw.v{color:#bff0d2;border-color:#2f6b49}
+  .trow .to{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .trow .to.ok{color:var(--good)} .trow .to.ng{color:#ff9b9b}
+  .trow .tp{color:var(--eye);font-size:.74rem;white-space:nowrap}
+  .trow .td{grid-column:1 / -1;color:var(--dim);font-size:.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .more{justify-self:start;font:inherit;font-size:.84rem;color:var(--ink);background:#1b2229;border:1px solid var(--line);border-radius:8px;padding:7px 16px;min-height:38px;cursor:pointer}
+  /* other */
+  .olist{display:grid;grid-template-columns:1fr;gap:8px}
+  .olist a{display:block;padding:11px 13px;border-radius:10px;background:#11161c;border:1px solid var(--line);text-decoration:none;color:var(--ink)}
+  .olist a b{display:block;font-size:.95rem}
+  .olist a small{display:block;color:var(--dim);font-size:.76rem;margin-top:1px}
+  .libs{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr;gap:6px}
+  .libs li{padding:8px 12px;border-radius:9px;background:#11161c;border:1px solid var(--line);font-size:.9rem}
+  .libs li a{color:var(--eye);text-decoration:none;font-weight:600}
+  .libs li small{display:block;color:var(--dim);font-size:.74rem;margin-top:1px}
+  /* the tab bar: along the bottom, in reach of a thumb */
+  body{padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+  .tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:60;background:rgba(13,16,20,.96);
+    border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom));
+    -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+  .tabbar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;background:transparent;border:0;font:inherit;
+    color:#7d8a99;font-size:.72rem;padding:6px 0;border-radius:10px;min-height:52px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .tabbar button span{font-size:1.25rem;line-height:1.1}
+  .tabbar button[aria-selected="true"]{color:var(--ink);background:#1b2229}
+  /* phones: the stage edge to edge */
+  @media (max-width:640px){
+    body{padding-block:8px calc(78px + env(safe-area-inset-bottom));font-size:14px}
+    .wrap{gap:10px}
+    .pagetitle{font-size:1rem}
+    .stage{margin-inline:-16px;max-width:none;border-radius:0;border-inline:0}
+    .intro{margin-top:-4px;font-size:.8rem}
+  }
+  /* ---------------- wide screens: the same app, laid out for a desk ---------------- */
+  @media (min-width:900px){
+    body{padding-block:14px 40px}
+    .wrap{position:relative}
+    .pagetitle{font-size:1.25rem;line-height:44px;padding-right:420px}
+    /* tabs as a segmented control in the header, right */
+    .tabbar{position:absolute;top:0;right:0;left:auto;bottom:auto;gap:4px;padding:4px;border-radius:12px;background:var(--panel);border:1px solid var(--line)}
+    .tabbar button{flex:none;flex-direction:row;gap:6px;color:var(--dim);font-size:.88rem;padding:7px 14px;border-radius:9px;min-height:0}
+    .tabbar button span{font-size:1rem}
+    .tabbar button:hover{color:var(--ink);background:#1b2229}
+    .tabbar button[aria-selected="true"]{color:var(--ink);background:#26303a}
+    .sheet,.about{max-width:900px}
+    .olist{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .libs{grid-template-columns:repeat(2,minmax(0,1fr))}
+  }
+  /* a phone turned sideways: only the scene, whichever tab was open */
+  @media (orientation:landscape) and (max-height:600px){
+    .tabbar{display:none}
+    body .main[data-tab]{display:grid!important}
+  }
+</style>
+</head>
+<body data-tab="play">
+<div class="wrap">
+  <h1 class="pagetitle">人体を制御するハエ脳実験</h1>
+  <p class="intro" data-tab="play">ハエ人間に餌を与えてください。人体をうまく操れると食べれる事を繰り返し人体操作を学習中です。ご協力ありがとうございます。</p>
+  <div class="main" data-tab="play">
+    <section>
+      <div class="stage" id="stage">
+        <div class="chip tl" id="scene">起動中</div>
+        <div class="foods" role="group" aria-label="タップで落とすもの"><button data-food="honey" aria-pressed="true" title="蜜"><span>🍯</span><small>蜜</small></button><button data-food="dung" aria-pressed="false" title="糞"><span>💩</span><small>糞</small></button><button data-food="meat" aria-pressed="false" title="肉"><span>🥩</span><small>肉</small></button><button class="more" id="foodmenu" aria-expanded="false" aria-label="落とすものを選ぶ" title="落とすものを選ぶ"><i></i></button></div>
+        <div class="brainmini" aria-label="蠅の脳の反応"><canvas id="brainmap" width="200" height="96"></canvas><div class="state" id="state">状態：静止</div><div class="state" id="school" hidden></div><label class="lvmini" title="脳のレベルを切り替える">脳<select id="lvmini" aria-label="脳のレベル"><option value="latest">最新</option><option value="1">レベル1（学習前）</option></select></label></div>
+        <div class="banner" id="banner" hidden><b id="bannertext"></b><button id="resetbtn" hidden>リセット</button></div>
+        <div class="toast" id="toast" hidden></div>
+        <div class="loading" id="loading"><span id="loadtext">体と脳を読み込み中…</span><i id="loadbar"></i></div>
+      </div>
+      <div class="replaybar" id="replaybar" hidden>
+        <div class="rbtitle" id="rbtitle">読み込み中…</div>
+        <span class="rbcase" role="group" aria-label="ほかのケース"><button id="rbprev" aria-label="前のケース">◀ 前</button><button id="rbnext" aria-label="次のケース">次 ▶</button><button id="rbshare" aria-label="このケースのリンクをコピー">共有</button></span>
+        <button id="rbplay" aria-label="一時停止">❚❚</button><input type="range" id="rbseek" min="0" max="1" step="0.05" value="0" aria-label="再生位置"><span class="rbtime" id="rbtime">0.0 / 0.0 秒</span>
+        <span class="rbspeed" role="group" aria-label="再生速度"><button data-speed="0.5" aria-pressed="false">0.5×</button><button data-speed="1" aria-pressed="true">1×</button><button data-speed="2" aria-pressed="false">2×</button></span><button id="rblive">ライブに戻る</button>
+      </div>
+    </section>
+
+    <aside>
+      <div class="panel" id="panel-live">
+        <div class="card">
+          <h2>感覚入力 → 蠅の脳</h2>
+          <div class="meters" id="inputs"></div>
+          <div class="sep"></div>
+          <h2>脳から出る指令（Hz）</h2>
+          <div class="meters" id="outputs"></div>
+        </div>
+        <div class="card">
+          <h2>いま動いている運動</h2>
+          <div class="progs" id="progs"></div>
+        </div>
+        <div class="card">
+          <h2>体と計算</h2>
+          <div class="kv" id="body"></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="panel sheet" data-tab="record">
+    <h2>学習の記録</h2>
+    <p class="note"><b>キノコ体の学習実験</b>: 蠅の脳のキノコ体が、蜜・肉・糞それぞれの匂いから、食べ物が落ちたときに「近づき方」を、食べ物に着いたときに「食べ方」を選んで試し、うまくいったかどうかで選び方を覚えていく。みんなの試行とサーバの自主練の記録を、30 秒ごとに読み直して表示する。</p>
+    <div class="lvrow"><label for="lvsel">脳のレベル</label><select id="lvsel"><option value="latest">最新</option></select><span class="note" id="lvnow"></span></div>
+    <p class="note" id="tune" hidden></p>
+    <div class="panel" id="rec"><p class="note">読み込み中…</p></div>
+    <h2>みんなの記録</h2>
+    <p class="note">これまでの試行。▶ の付いたものは、タップすると「実験」でその動きをもう一度見られる（映像ではなく、記録した関節の角度から体を動かし直している）。</p>
+    <ul class="trials" id="trials"><li class="note">読み込み中…</li></ul>
+    <button class="more" id="moretrials" hidden>もっと見る</button>
+  </div>
+  <div class="panel about" id="panel-about" data-tab="about">
+    <div class="eyebrow">NINGEN · 実験中 · リアルタイム</div>
+    <p class="lede">FlyWire の蠅の全脳（13.9 万ニューロン）と、筋骨格の人体モデル MyoFullBody（骨 104・関節 123・筋肉 416 本）を、このブラウザの中で同時に動かしている。人は蠅のように四つん這いで這い回る。右下で蜜・糞・肉を選んで床をタップすると、そこへ上から落ちてくる。落ちた音、匂い、見えるものは蠅の脳に入り、這い出すか、どちらへ曲がるか、食べるか、驚いて逃げるかは、すべてその脳のスパイクで決まる。うまく食べ物にたどり着けるかどうかも脳しだいで、それを繰り返し学習している。</p>
+    <p><b>蠅が決めていること</b>: 体をどう動かすかの判断は、蠅の脳のスパイクから出している。脳が決めるのは、這い出すかどうかと速さ（匂いで発火する下行性ニューロン DNa03・DNa13・DNa15・DNa16・DNp32 と DNp09）、後ずさり（MDN）、食べるかどうか（摂食の運動ニューロン MN9）、身づくろい（DNg84・DNg35）、驚いて逃げるか（ジャイアントファイバー DNp01）、音の方へ首を向けるか、肘を曲げて身をかがめるか、近づき方・食べ方・起き上がり方（キノコ体）。脳が何もしなければ体は動かず、ひとりでに這い出したり見回したりはしない。<b>体の側（蠅の胸部神経節にあたる部分）がしていること</b>: 脳が前進を指令している間だけ、いちばん強く匂う食べ物の方へ向きを合わせ、口がその上に来たら止まって顔を下ろし、口を食べ物に触れさせる（そこで味が脳に入り、食べるかどうかは MN9 しだい）。手は食べ物の塊の上や、それを押しのける所には着かず、横に着く。はじめは向きの合わせ方も脳だけにやらせたが、このモデルには左右の触角を比べて匂いの方へ向く回路がなく、曲がる指令の DNa02 も匂いに左右で偏って答える（肉はどちらから匂っても右ばかり）ので、体は食べ物の周りを回ったり通り過ぎたりしてほとんど食べられなかった。いまも DNa02 の左右差は曲がりに少し加わっている。どのニューロンにどの動きを担わせるかは全脳モデルの反応を測ってこちらが選んだ対応で、手と膝の運び方、重心の移し方、416 本の筋肉への配分、起き上がりの動作も体の側の仕組み。床の端で引き返すことはしない（出たら場外）。</p>
+    <p><b>脳に入る感覚</b>: このモデルの脳は入力がないと一つも発火しないので、体と周りのようすを 20 ms ごとに感覚ニューロンへ入れている。<b>匂い</b>: 床の食べ物それぞれの匂いを、頭の左右 7 cm の触角の位置で、量が多く近いほど強く（肉と糞は蜜の約 2 倍強く、1.5 倍遠くまで届く。空腹の蠅は嗅覚・味覚の感覚ニューロンの感度が上がるので、いつも空腹として匂いは 1.8 倍、味は 1.5 倍。受容ニューロンの発火は濃度のおおよそ対数で、左右の触角の差は触角葉がするように強調して）、その食べ物の糸球体の嗅覚受容ニューロンに入れる（蜜は果物の発酵臭に答える DM1・DM2・DM4・VA2・DL1、肉は酸や腐敗臭に答える DP1m・DC4・VL2a・VM7d・VM7v、糞はアンモニアの VM1・二酸化炭素の V と VM7d・VM7v・VM6v。肉と糞は、ありそうな糸球体のうちこのモデルで歩行の下行性ニューロンが反応する組み合わせを測って選んだ）。全脳モデルは嗅覚の入力で脳全体が暴走する（2 Hz でも毎秒 45 万スパイク）ので、その暴走の元になっているニューロン 161 個を止めてある（止めても味・驚き・音・傾きへの反応は変わらないことを確かめた）。<b>味</b>: 唇が食べ物に触れると味の感覚ニューロン（手のひらが触れても 3 分の 2 の強さで。蠅は脚先でも味を見る）: 蜜は甘味 150 Hz、肉は水と低塩 各 100 Hz、糞は水 120・低塩 80・苦味 40 Hz。<b>目</b>: 頭が回り進んで景色が流れるほど光受容体 R1-6（各目の 10 分の 1）を、目の前を横切る小さな物（自分の手、床の食べ物）は LC11 を、目に向かって速く迫る物は LC4・LPLC2 を刺激する。<b>触角と単眼</b>: 頭の速さと傾きの変化でジョンストン器官（風・重力）と単眼を。<b>音</b>: 食べ物が落ちた音を、近く・その側ほど強く、左右のジョンストン器官の聴覚ニューロンへ（肉＞糞＞蜜の順に大きい）。</p>
+    <p><b>音の方を見る</b>: この全脳モデルでは、左の音で左の DNp12、右の音で右の DNg24 が発火し、体が動いているだけのときはどちらも静かなままだった。その発火で首が音の方へ振り向き、しばらくそちらを見る（反応まで約 0.04 秒）。見た先の動きは目の入力になって脳へ戻る。大きな音ではジャイアントファイバーが発火して逃げる動きになることもある。</p>
+    <p><b>学習実験</b>: 蠅の脳は、二つのしかたで体の使い方を学ぶ。<b>① キノコ体で選ぶ</b>: 試行ごとに、食べ物が床に落ちたときの「近づき方」（そろり・ずんずん・手足を広く など 5 通り）と、食べ物に着いたときの「食べ方」（胸から伏せる・ゆっくり伏せる など 4 通り）、転倒するたびに「起き上がり方」（一気に起きる・ふつうに起きる・落ち着いてから・手を広げて起きる）を、食べ物が後ろに落ちたときは「後ろへの向き方」（その場で回る・バックしながら回る・大回りする）を選ぶ。食べ物の匂いを投射ニューロンに入れるとケニヨン細胞のまばらな反応になり、出力ニューロン MBON の区画（選択肢 1 つに 1 区画）のうち、いちばん弱くしか反応しない区画の選択肢が選ばれる。うまくいった選択にはドーパミンが出てケニヨン細胞からのつながりが弱まり、また選ばれやすくなる。うまくいかなければ逆。近づき方は、食べ物に着けたら成功、着く前に転倒・場外なら失敗。食べ方は、転ばずに食べられたら成功、食べた後に転んだら軽い失敗、食べる前に転んだら失敗。起き上がり方は、8 秒以内に起き上がれたら成功で、早いほど強く、起き上がれなければ失敗。後ろへの向き方は、食べ物に着けたら成功、着く前に転倒・場外なら失敗。回るときは、手足の行き先を重心のまわりに少しずつ回した位置にして、行き先からいちばんずれている手足から、重心を移してから一本ずつ踏みかえる（回る速さ・一歩で回す角度・後ずさりの速さはサーバの自動調整で、後ろに食べ物がある試行も含めて探している）。<b>② 動かすニューロンへのシナプスで覚える</b>: 肘を曲げる DNp28・DNb06、曲がる DNa02、進む DNa03・DNa13・DNa15・DNa16 へ入る興奮性のシナプス（左右の群ごと）を、キノコ体と同じ規則で変わるようにしてある。0.3 秒ごとに、その群がいつもよりどれだけ発火したかと、直後にどうなったか（肘は胴が安定したか・転ばなかったか、曲がる・進むは食べ物の匂いが強くなったか・味がしたか）を比べてドーパミンを出す: よく発火して良くなった（あるいはあまり発火せず悪くなった）ら、直前に働いたシナプスが強まり、同じ場面でその動きが出やすくなる。逆なら弱まる。このドーパミンの計算は体の側がドーパミン細胞の代わりにしていて、蠅にこういう回路があるわけではない。どちらの学習も、みんなの試行とサーバの自主練の分がサーバに集まって積み上がり、100 試行ごとにレベルが上がる。<b>判定</b>: 食べられたら成功。転倒は 8 秒以内に起き上がって活動を続ければセーフで、起き上がれなければ失敗。体のどこかがフィールドの外に出たら、その瞬間に場外で失敗。<b>レベル</b>: 学習前のレベル1も保存してあり、観察画面の右上か「記録」で切り替えられる。体の基礎制御（重心の移し方・手足の幅・踏ん張り・起き上がりの強さ）もレベルごとに割り当てている: レベル1は体も学習前のまま（手を肩の真下近くに狭くつき、手のひらが上を向いて腕がねじれることが多く、四つん這いを保つことすらままならない）、それ以降はそのレベルになった時点で検証済みだった自動調整の設定（なければ手で決めた設定）、「最新」は今の検証済みの設定。この基礎制御の設定はサーバでの探索で見つけていて、蠅のシナプスの学習ではない。<b>限界</b>: 脳の出力をどの動きにつなぐかはこちらの選択で、このモデルでは右側の DNa02 などが匂いにほとんど答えないなど左右差も大きい（曲がる向きは、それぞれの側の DNa02 のいつもの発火からの増減で読んでいる）。学習前の脳は、食べ物の匂いで這い出しても、まっすぐ食べ物にたどり着けるとは限らない。</p>
+    <p><b>食べ物</b>: 肉と糞は、体とは別に用意した小さな物理の世界（同じ MuJoCo）の中の物体で、上から落ちて転がり、跳ねずに止まり、上に落ちたものは積み重なるか寄りかかる。人の手・腕・膝・すね・足・胴・頭の形をなぞったカプセルが体と一緒に動いて、這うときに蹴飛ばしたり押しのけたりする（食べ物が人を押し返すことはない）。食べられると形も小さくなる。蜜は物理では動かさず、床か、注いだ先の肉や糞の上にたまって一緒に動く。人の体に注ぐと、流れは体に当たって止まり、そこから粒になって皮膚の上を低い方へ伝い、腹や腕の下など下向きの面まで来るとしずくになって床へ垂れる。食べ物になるのは床に届いた分で、体には薄く蜜が残って数秒で消える（皮膚の変形を画面の側でも計算して、流れる先を決めている）。</p>
+    <p><b>音</b>: 食べ物が落ちた音（蜜はとろり、糞はべちゃっ、肉はどさっ）と、食べている間の音（蜜はなめる、糞はぐちゃぐちゃ、肉はかみちぎる）は、録音ではなく WebAudio でノイズと発振器から合成している（ブラウザの決まりで、最初に画面に触れてから鳴る）。</p>
+    <p><b>首</b>: MyoFullBody には首の関節も首の筋肉もなく、四つん這いだと顔が真下を向くので、頭の付け根にうなずき・振り向きの 2 関節を加えた。ここだけは筋肉ではなく関節トルクで動かしている。</p>
+    <p><b>頭の上の蠅</b>: この脳の持ち主、NeuroMechFly の蠅の体（flygym、Apache-2.0）を 14 cm に拡大して頭に載せている。人が這うと蠅の脚も flygym の歩行リズムで動き、人が手をすり合わせると蠅も前脚を同じ調子ですり合わせる。</p>
+    <p><b>人の姿</b>: 皮膚は MakeHuman の人体メッシュ（CC0、若い成人男性の形にしたもの）を MyoFullBody の関節位置に合わせて変形し、骨に結びつけたもの。股関節を曲げるとお腹・お尻・脚の付け根に、腕を上げると肩まわりに肉が寄る。目は、脳が注目しているもの（音がして振り向いた先、目に迫る物、視野でいちばん動いている物、なければ正面の床）を見ていて、画面にはその先へ点線と輪で出している（橙は音、赤は迫る物、青は動く物、灰は正面）。口はもぐもぐ、床をさぐる・食べるときはぱくぱく動き、開くと上下の歯と舌が見える（下の歯と舌はあごと一緒に下がる）。中では 416 本の筋肉が骨を動かしている。</p>
+    <p><b>体の側の仕組み</b>: 脳が這い出せば、手のひらを床につけ、右手と左膝・左手と右膝を組にして運ぶ（重心を残りの手足の支えの内側へ移してから持ち上げる）。MN9 が発火すると胸と頭を落として唇を食べ物につけ、MN9 が出ている間は食べ続ける（MN9 は 20 ms ごとに見るとバースト状で途切れるので約 150 ms の平均で判定）。蜜は 2.5 秒、肉は 3.5 秒ほどで食べ切る。食べている間は歩かない。肘は、脳が傾き・揺れに答える DNp28・DNb06 のいつもより強い発火の分だけ曲げて胸を落とす。倒れたら、キノコ体が選んだ起き上がり方で、床に触れている体の部分すべてを支えにして四つん這いへ戻る。手と膝の着き場所を逆運動学で関節に直し、それを出す活動を 416 本の筋肉に配分している。</p>
+    <p><b>支え</b>: 見えない支えはなく、体は床についた手と膝（と足）で支えられている。「床が支える力」は床が体を押し上げている力の合計（じっとしていれば体重とほぼ同じで、動くと増えたり減ったりする）。筋肉で出し切れない分は、大きな関節で最大 60 N·m（背骨は 180 N·m）までの関節トルクで補っていて、その量は「筋で足りない力」に出る。顔を下ろしたとき頭が床（や食べ物）に突っ込まないよう、頭の皮膚のいちばん低い点を体と目標姿勢の両方で見張り、1.5 cm まで近づくと胸と首で顔を持ち上げている。</p>
+  </div>
+  <div class="panel sheet" data-tab="other">
+    <h2>ほかのハエのページ</h2>
+    <nav class="olist">
+      <a href="/"><b>ひらがな読み書き学習したハエ</b><small>トップページ。46 文字を練習した脳が、字を読んで地面に書く</small></a>
+      <a href="/suji/"><b>数字を読む蠅</b><small>MNIST の数字 1〜9 を練習した脳</small></a>
+      <a href="/juku/kiroku.html"><b>みんなの手書きの記録</b><small>書かれた字と、蠅がどう読んだか</small></a>
+      <a href="/tataki/"><b>ハエたたき</b><small>1 分で何匹たたけるか</small></a>
+      <a href="/game2/"><b>ハエたたき 1 対 1</b><small>だれかと同じ場で競う</small></a>
+      <a href="/game/"><b>うんち陣取り</b><small>うんちを置いて蠅を集める対戦</small></a>
+      <a href="/kansatsu/"><b>蠅観察</b><small>群がる蠅をタップすると、その脳が見える</small></a>
+      <a href="/gakushu/"><b>匂いを覚えさせる</b><small>キノコ体の学習そのもの</small></a>
+      <a href="/meiro/"><b>迷路実験</b><small>脳で動く蠅と迷路</small></a>
+      <a href="https://github.com/satorunet/hae" target="_blank" rel="noopener"><b>ソースコード（GitHub）</b><small>satorunet/hae — MIT ライセンス</small></a>
+    </nav>
+    <h2>使ったライブラリ・データ</h2>
+    <ul class="libs">
+      <li><a href="../flybrain/">flybrain</a><small>蠅の全脳モデル（Shiu et al., <i>Nature</i> 2024）と FlyWire コネクトーム v783（CC-BY 4.0）</small></li>
+      <li><a href="https://github.com/MyoHub/myo_sim" target="_blank" rel="noopener">MyoSim MyoFullBody</a><small>筋骨格の人体モデル（骨 104・関節 123・筋肉 416 本）— Apache-2.0。肩の補助体の慣性を修正</small></li>
+      <li><a href="https://github.com/google-deepmind/mujoco" target="_blank" rel="noopener">MuJoCo</a><small>物理エンジン（WebAssembly 版）— Apache-2.0</small></li>
+      <li><a href="https://github.com/makehumancommunity/makehuman" target="_blank" rel="noopener">MakeHuman</a><small>皮膚にした基本メッシュ — CC0</small></li>
+      <li><a href="https://github.com/NeLy-EPFL/flygym" target="_blank" rel="noopener">flygym / NeuroMechFly v2</a><small>頭の上の蠅の体と歩行の CPG — Apache-2.0</small></li>
+      <li><a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><small>3D 表示 — MIT</small></li>
+    </ul>
+    <p class="note">脳: <a href="../flybrain/" style="color:var(--eye)">flybrain</a>（Shiu et al. 2024 の全脳モデル、FlyWire v783）· 体: <a href="https://github.com/MyoHub/myo_sim" style="color:var(--eye)">MyoSim MyoFullBody</a>（Apache-2.0、肩の補助体の慣性を修正）· 物理: <a href="https://github.com/google-deepmind/mujoco" style="color:var(--eye)">MuJoCo</a> WebAssembly（Apache-2.0）· 皮膚: <a href="https://github.com/makehumancommunity/makehuman" style="color:var(--eye)">MakeHuman</a> 基本メッシュ（CC0）</p>
+  </div>
+
+  <div class="err" id="err"></div>
+  <nav class="tabbar" aria-label="表示の切り替え">
+    <button data-go="play" aria-selected="true"><span>🧪</span>実験</button>
+    <button data-go="record" aria-selected="false"><span>📈</span>記録</button>
+    <button data-go="about" aria-selected="false"><span>🧠</span>しくみ</button>
+    <button data-go="other" aria-selected="false"><span>🪰</span>その他</button>
+  </nav>
+</div>
+<script type="module" src="web/app.js?v=78"></script>
+</body>
+</html>

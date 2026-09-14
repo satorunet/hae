@@ -1,0 +1,21 @@
+// Dump body poses (xpos, xquat) while crawling, probing and kneeling, for skin analysis.
+import { readFile, writeFile } from 'node:fs/promises';
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (u) => { const url = new URL(u); return url.protocol === 'file:' ? new Response(await readFile(url)) : realFetch(u); };
+const frames = []; let ready; const readyP = new Promise((r) => (ready = r));
+globalThis.self = { postMessage: (msg) => { if (msg.type === 'ready') ready(msg); else if (msg.type === 'frame') frames.push(msg); } };
+await import('./body-worker.js');
+self.onmessage({ data: { type: 'init' } });
+await readyP;
+self.onmessage({ data: { type: 'motion', jerky: false } });
+const out = {};
+const grab = (name) => { const f = frames.at(-1); out[name] = { xpos: Array.from(f.xpos), xquat: Array.from(f.xquat) }; };
+await new Promise((r) => setTimeout(r, 2500)); grab('crawl');
+self.onmessage({ data: { type: 'do', what: 'sugar' } });
+self.onmessage({ data: { type: 'brain', out: { MN9: 90 } } });
+await new Promise((r) => setTimeout(r, 2500)); grab('feed');
+self.onmessage({ data: { type: 'do', what: 'nosugar' } });
+self.onmessage({ data: { type: 'brain', out: { groomL: 200, groomR: 200 } } });
+await new Promise((r) => setTimeout(r, 3000)); grab('kneel');
+await writeFile(process.argv[2], JSON.stringify(out));
+process.exit(0);

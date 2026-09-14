@@ -1,0 +1,17 @@
+import loadMujoco from '@mujoco/mujoco';
+import { readFile } from 'node:fs/promises';
+import { gunzipSync } from 'node:zlib';
+import { MuscleDriver } from './muscles.mjs';
+const mj = await loadMujoco();
+const vfs = new mj.MjVFS(); vfs.addBuffer('b.mjb', gunzipSync(await readFile('data/myofullbody.mjb.gz')));
+const m = mj.MjModel.from_binary_path('b.mjb', vfs), d = new mj.MjData(m);
+mj.mj_forward(m, d);
+const drv = new MuscleDriver(mj, m, { rootForce: 3000, rootTorque: 1500 });
+const q = Float64Array.from(d.qpos); const a = 0.5; q[3] = Math.cos(a / 2); q[4] = Math.sin(a / 2);
+const err = new mj.DoubleBuffer(m.nv);
+mj.mj_differentiatePos(m, err, 1.0, Array.from(d.qpos), Array.from(q));
+console.log('differentiatePos err root', Array.from(err.GetView().slice(0, 6)).map((v) => v.toFixed(3)));
+const info = drv.step(d, q);
+console.log('tau root', Array.from(drv.tau.slice(0, 6)).map((v) => v.toFixed(1)), 'applied', Array.from(d.qfrc_applied.slice(0, 6)).map((v) => v.toFixed(1)), info);
+const M = new mj.DoubleBuffer(m.nv); const unit = new Array(m.nv).fill(0); unit[3] = 1;
+mj.mj_mulM(m, d, M, unit); console.log('M column for root rot x (first 6)', Array.from(M.GetView().slice(0, 6)).map((v) => v.toFixed(2)));
