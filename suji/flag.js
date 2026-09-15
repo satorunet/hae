@@ -312,7 +312,7 @@ export class FlagFly {
     this.act = a;
     this.actT = dur;
     if (a === 'walk') {
-      const far = Math.hypot(this.x, this.y) > ROAM * 0.8;
+      const far = Math.hypot(this.x, this.y) > (this.roam ?? ROAM) * 0.8;   // (a page can widen `roam`)
       this.turn = far ? wrap(Math.atan2(-this.y, -this.x) - this.yaw) : rnd(-1.4, 1.4);
     }
   }
@@ -757,7 +757,7 @@ export class FlagFly {
       this.turn -= v.wz * dt;
       this.x += (Math.cos(this.yaw) * v.vx - Math.sin(this.yaw) * v.vy) * dt;
       this.y += (Math.sin(this.yaw) * v.vx + Math.cos(this.yaw) * v.vy) * dt;
-      if (steer == null && Math.hypot(this.x, this.y) > ROAM) {
+      if (steer == null && Math.hypot(this.x, this.y) > (this.roam ?? ROAM)) {
         this.turn = wrap(Math.atan2(-this.y, -this.x) - this.yaw);
       }
     }
