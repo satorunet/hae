@@ -21,7 +21,7 @@ This directory of the site's repository, [satorunet/hae](https://github.com/sato
   - out: DNp12 left/right (turning to the song), vpoDN = DNp37 (over 8 Hz she stands still for the
     male), oviDNa (over 4 Hz for a second she lays)
 - **Bodies** (`app.js`, `male.js`): NeuroMechFly v2 (flygym) from `test03/` and the walking fly of
-  `suji/flag.js`. The male has no brain: approach → tap → wing song → mount → copulation is scripted,
+  `suji/flag.js`. On this page the male runs no brain: approach → tap → wing song → mount → copulation is scripted,
   and his song reaches her brain from where he is. The young are low-poly crowd meshes.
 - **Laying** (`eggs.js`): eggs ripen in her at ~50 a day (fewer with age, up to 80 held) and a clutch
   comes out at once when oviDNa fires on the fruit — or on a dead fly nearby, which females pick
