@@ -541,10 +541,32 @@ function openBubble(w) {
   x.addEventListener('click', (e) => { e.stopPropagation(); closeBubble(w); });
   el.append(x, head, pic, body);
   $('.stage').append(el);
-  bubbles.set(w, { el, head, pic, body, drawn: 0, lights: {} });
+  const B = { el, head, pic, body, drawn: 0, lights: {}, pinned: null };
+  bubbles.set(w, B);
+  // drag it anywhere on the view; once moved it stays there, with a line back to its fly
+  let grab = null;
+  el.addEventListener('pointerdown', (e) => {
+    if (e.target === x) return;
+    e.stopPropagation(); e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    const r = el.getBoundingClientRect(), sr = fly.renderer.domElement.getBoundingClientRect();
+    grab = { id: e.pointerId, sx: e.clientX, sy: e.clientY, left: r.left - sr.left + r.width / 2, top: r.top - sr.top, moved: false };   // (its centre-top, in the view)
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (!grab || e.pointerId !== grab.id) return;
+    const ddx = e.clientX - grab.sx, ddy = e.clientY - grab.sy;
+    if (!grab.moved && Math.hypot(ddx, ddy) < 4) return;
+    grab.moved = true;
+    const c = fly.renderer.domElement, hw = el.offsetWidth / 2;
+    B.pinned = { left: clamp(grab.left + ddx, hw, c.clientWidth - hw), top: clamp(grab.top + ddy, 0, Math.max(0, c.clientHeight - el.offsetHeight)) };   // kept inside the view
+    drawBubble(w);
+  });
+  const release = (e) => { if (grab && e.pointerId === grab.id) grab = null; };
+  el.addEventListener('pointerup', release); el.addEventListener('pointercancel', release);
+  el.style.touchAction = 'none';
   stepBubble();
 }
-function closeBubble(w) { const b = bubbles.get(w); if (!b) return; b.el.remove(); bubbles.delete(w); }
+function closeBubble(w) { const b = bubbles.get(w); if (!b) return; b.el.remove(); b.line?.remove(); bubbles.delete(w); }
 // The brain picture the top page uses: every FlyWire neuron as a faint dot at its soma position (flybrain/data/pos783),
 // with the cells of each group drawn over it in colour, brighter the harder they fire (0..1). Front view, dorsal up.
 const brainPic = { xs: null, ys: null, groups: null, bases: new Map() };
@@ -608,9 +630,21 @@ function drawBubble(w) {
   if (!p) { closeBubble(w); return; }   // its body is gone
   const v = new THREE.Vector3(...p).project(fly.camera), c = fly.renderer.domElement;
   const bx = ((v.x + 1) / 2) * c.clientWidth, by = ((1 - v.y) / 2) * c.clientHeight, half = el.offsetWidth / 2;
-  el.style.left = `${Math.min(Math.max(bx, half + 4), c.clientWidth - half - 4)}px`; el.style.top = `${by}px`;
-  el.style.setProperty('--tail', `${Math.round(bx - Math.min(Math.max(bx, half + 4), c.clientWidth - half - 4))}px`);   // the tail still points at the fly
-  el.classList.toggle('below', by - el.offsetHeight - 14 < 0);   // no room above it: under the fly instead
+  if (B.pinned) {                          // moved by hand: it stays put, and a line joins it to its fly
+    el.style.left = `${B.pinned.left}px`; el.style.top = `${B.pinned.top}px`;
+    el.classList.add('pinned'); el.classList.remove('below');
+    const ns = 'http://www.w3.org/2000/svg';
+    if (!B.line) { B.line = document.createElementNS(ns, 'svg'); B.line.setAttribute('class', 'bubline'); B.line.innerHTML = '<line/><circle r="2.5"/>'; $('.stage').append(B.line); }
+    const r = el.getBoundingClientRect(), sr = c.getBoundingClientRect(), ex = clamp(bx, r.left - sr.left, r.right - sr.left), ey = clamp(by, r.top - sr.top, r.bottom - sr.top);
+    const L = B.line.firstChild, dot = B.line.lastChild;
+    L.setAttribute('x1', ex); L.setAttribute('y1', ey); L.setAttribute('x2', bx); L.setAttribute('y2', by);
+    dot.setAttribute('cx', bx); dot.setAttribute('cy', by);
+    B.line.style.zIndex = el.style.zIndex;
+  } else {
+    el.style.left = `${Math.min(Math.max(bx, half + 4), c.clientWidth - half - 4)}px`; el.style.top = `${by}px`;
+    el.style.setProperty('--tail', `${Math.round(bx - Math.min(Math.max(bx, half + 4), c.clientWidth - half - 4))}px`);   // the tail still points at the fly
+    el.classList.toggle('below', by - el.offsetHeight - 14 < 0);   // no room above it: under the fly instead
+  }
   paintBrain(B.pic, B.lights);
   if (performance.now() - B.drawn < 250) return;   // the text a few times a second
   B.drawn = performance.now();
@@ -763,7 +797,8 @@ function setSound(on) {
   if (!audio.ctx) audioInit();
   audio.ctx.resume();
   audio.on = on;
-  $('#sound').textContent = on ? '🔊 音: オン' : '🔇 音: オフ';
+  $('#sound').innerHTML = `<i class="fa-solid ${on ? 'fa-volume-high' : 'fa-volume-xmark'}" aria-hidden="true"></i>`;
+  $('#sound').setAttribute('aria-label', on ? '音: オン' : '音: オフ'); $('#sound').title = on ? '音: オン' : '音: オフ';
   $('#sound').setAttribute('aria-pressed', String(on));
 }
 $('#sound').addEventListener('click', () => setSound(!audio.on));

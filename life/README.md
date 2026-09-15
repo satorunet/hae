@@ -44,6 +44,15 @@ This directory of the site's repository, [satorunet/hae](https://github.com/sato
   (LC10a, and P1 at the place of its female counterpart pC1 — `data/male783.json`). Song, laying,
   mating and death have sounds and marks.
 
+Bubbles can be dragged anywhere on the view (a dotted line keeps them tied to their fly).
+
+The male was also tried with a brain of his own — the Male CNS v1.0 connectome (Janelia FlyEM with
+Cambridge, MRC LMB and Google Research; CC-BY 4.0), brain and ventral nerve cord, in the same LIF model
+with the synapse weight scaled for its ~1.9× denser synapse counts. P1 → pIP10 → dPR1 (the song command
+reaching the thorax) works, the senses alone do not reach P1, pC1 drives vpoDN in the female where P1
+drives pIP10 in the male, and LC10a reaches pIP10 only in the male — but the behaviour on screen hardly
+changed, so this page keeps one brain. The two-brain version runs at https://hae.satoru.net/life-dev/.
+
 What is simulated and what is assumed is written out on the page, under その他.
 
 ## Running it

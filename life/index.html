@@ -6,6 +6,7 @@
 <title>ハエLIFE（試作）</title>
 <meta name="description" content="試作: FlyWire のメスの蠅の全脳に求愛の歌を聴かせ、交尾を受け入れる指令ニューロン vpoDN まで信号が届くかを見る。">
 <meta name="robots" content="noindex">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
 <style>
   :root{ --bg:#0b0e12; --card:#141a21; --card2:#10151b; --line:#232c36; --ink:#e8eef4; --dim:#8c99a8; --ok:#59b7ff; --warm:#ffb454; --good:#54d98c; --vio:#b69cff; --pink:#ff8fb0;
     --f:#ff9cc0; --m:#8cc6ff; --egg:#f3e7c4; --larva:#e7b77a; --adult:#9be3b4; }
@@ -21,7 +22,7 @@
   .top h1{font-size:1.18rem;margin:0;line-height:1.2;flex:1;min-width:0}
   .top h1 small{display:block;font-size:.72rem;font-weight:500;color:var(--dim);margin-top:2px}
   .tag{display:inline-block;font-size:.66rem;font-weight:700;padding:0 6px;border-radius:5px;background:#3a2f18;color:var(--warm);vertical-align:2px;margin-left:4px}
-  #sound{flex:none;padding:7px 12px;font-size:.85rem;border-radius:999px}
+  #sound{flex:none;width:44px;height:44px;padding:0;font-size:1.1rem;line-height:1;border-radius:50%}
   #sound[aria-pressed="true"]{background:#1d2a22;border-color:#2f6b4a;color:#bff3d2}
   /* the view */
   .stage{position:relative;border-radius:18px;overflow:hidden;background:#07090c;border:1px solid var(--line)}
@@ -40,6 +41,12 @@
   .flybub.below{transform:translate(-50%,14px)}
   .flybub.below::after{bottom:auto;top:-6px;border:6px solid transparent;border-top:0;border-bottom-color:rgba(9,12,16,.93)}
   .flybub{pointer-events:auto;padding-right:22px}
+  .flybub{cursor:grab}
+  .flybub.pinned{transform:translate(-50%,0)}
+  .flybub.pinned::after{display:none}
+  .bubline{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:6}
+  .bubline line{stroke:rgba(169,211,255,.55);stroke-width:1.2;stroke-dasharray:3 3}
+  .bubline circle{fill:rgba(169,211,255,.8)}
   .flybub .bx{position:absolute;top:1px;right:1px;width:20px;height:20px;padding:0;border:0;background:transparent;color:#8c99a8;font-size:.9rem;line-height:1;border-radius:6px}
   .flybub .bx:active{background:#26313c;color:var(--ink)}
   .flybub .bpic{display:block;width:150px;margin:3px 0 2px;border-radius:6px}
@@ -106,7 +113,8 @@
   details.card>summary::after{content:"";margin-left:auto;width:8px;height:8px;border-right:2px solid var(--dim);border-bottom:2px solid var(--dim);transform:rotate(45deg);transition:transform .2s}
   details.card[open]>summary::after{transform:rotate(-135deg)}
   details.card>.nb{padding:0 14px 12px}
-  .ic{width:1.6em;text-align:center}
+  .ic{width:1.6em;text-align:center;color:var(--dim)}
+  .links a i{width:1.4em;text-align:center;color:var(--dim);margin-right:4px}
   .sec{font-size:.8rem;letter-spacing:.06em;color:var(--dim);margin:22px 2px 0;font-weight:700}
   details.note{margin-top:8px}
   .nb p,.nb li{font-size:.85rem;color:#cdd6df}
@@ -145,7 +153,7 @@
     -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
   .tabbar button,.tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;background:transparent;border:0;
     color:#7d8a99;font-size:.72rem;padding:6px 0;border-radius:10px;min-height:52px;text-decoration:none;justify-content:center}
-  .tabbar span{font-size:1.25rem;line-height:1.1}
+  .tabbar span{font-size:1.15rem;line-height:1.3;height:1.5rem;display:flex;align-items:center}
   .tabbar button[aria-selected="true"]{color:#e6edf3;background:#1b2229}
   .tabbar{transition:transform .35s ease, opacity .35s ease}
   .tabbar.tuck{transform:translateY(calc(100% - 6px));opacity:.35}   /* tucked away when nothing is touched; a touch brings it back */
@@ -162,7 +170,7 @@
 <body data-tab="play">
 <header class="top">
   <h1>ハエLIFE<span class="tag">試作</span><small>全脳シミュレーションの蠅が、歌を聴き、交尾し、卵を産み、世代をつなぐ</small></h1>
-  <button id="sound" aria-pressed="false">🔇 音: オフ</button>
+  <button id="sound" aria-pressed="false" aria-label="音: オフ" title="音: オフ"><i class="fa-solid fa-volume-xmark" aria-hidden="true"></i></button>
 </header>
 
 <div class="stage" data-tab="play"><canvas id="fly"></canvas><div id="load">脳を読み込み中…</div>
@@ -215,19 +223,19 @@
 </div></section>
 <p class="hint" data-tab="brain" style="margin:6px 2px 0">最初のメスの全脳（FlyWire v783、13.9 万ニューロン）を LIF モデルで動かし、主なニューロン群の発火頻度をそのまま表示している。棒は今の値、下の線はここ 6 秒ほどの変化。</p>
 
-<section class="card" id="mbrain" data-tab="brain"><h2><i class="sx m"></i> オスの脳（計算していない・知られている回路）</h2>
+<section class="card" id="mbrain" data-tab="brain"><h2><i class="sx m"></i> オスの脳（このページでは計算していない・知られている回路）</h2>
   <canvas id="mpic" class="brainpic"></canvas>
   <p class="hint" style="margin:4px 0 8px">いまの行動で働く細胞のうち、脳にあって配線図で位置がわかるものを光らせている: 視覚の LC10a（青）、P1（紫。オス特有なので、メスの脳で相同の pC1 の位置）。ppk23（脚）・vPR6（胸）・Crz（腹）は脳の外、pIP10 は配線図の型名との対応が未確認のため画像には出ない</p>
   <div id="mbars"></div>
   <p class="hint" id="mbnote"></p>
 </section>
-<p class="hint" data-tab="brain" style="margin:6px 2px 0">オスは脳を動かしておらず、台本で動いている（FlyWire はメスの脳で、オスの配線とは一部が違う）。ここでは、オスがいまの行動をしているとき、実際のオスで働くことが実験でわかっているニューロンを光らせている。発火頻度の計算値ではない。<br>出典: ppk23（Thistle ほか 2012、Toda ほか 2012）、LC10a（Ribeiro ほか 2018）、P1・pIP10・vPR6（von Philipsborn ほか 2011）、Crz（Tayler ほか 2012）。</p>
+<p class="hint" data-tab="brain" style="margin:6px 2px 0">このページのオスは脳を動かさず、決めた手順で動いている（FlyWire はメスの脳。オスの配線図 Male CNS もあり、それでオスの脳を動かす試験版が <a href="/life-dev/">/life-dev/</a>）。ここでは、オスがいまの行動をしているとき、実際のオスで働くことが実験でわかっているニューロンを光らせている。発火頻度の計算値ではない。<br>出典: ppk23（Thistle ほか 2012、Toda ほか 2012）、LC10a（Ribeiro ほか 2018）、P1・pIP10・vPR6（von Philipsborn ほか 2011）、Crz（Tayler ほか 2012）。</p>
 
-<details class="card" data-tab="about" open><summary><span class="ic">👆</span>遊び方</summary><div class="nb">
+<details class="card" data-tab="about" open><summary><span class="ic"><i class="fa-solid fa-hand-pointer" aria-hidden="true"></i></span>遊び方</summary><div class="nb">
   <ul>
     <li>「開始」を押すと時間が進み、オスがメスに近づいて歌い始める</li>
     <li>地面をタップすると、その場所に餌が出る。ピンチ・ホイール・右上の ＋− で拡大縮小</li>
-    <li>蠅をタップすると、その蠅の脳の様子が吹き出しで出る。何匹でも同時に出せて、× かもう一度その蠅をタップすると消える（最初のメスは全脳の発火頻度、ほかは台本・規則と、その行動で働くことが知られているニューロン）</li>
+    <li>蠅をタップすると、その蠅の脳の様子が吹き出しで出る。何匹でも同時に出せて、ドラッグで好きな場所へ動かせ（動かすと点線で蠅とつながる）、× かもう一度その蠅をタップすると消える（最初のメスは全脳の発火頻度、ほかは脳を動かさず、決めた手順・規則と、その行動で働くことが知られているニューロン）</li>
     <li>下のボタンで「観察・数・脳・その他」を切り替える。しばらく触らないとボタンは下にしまわれ、画面に触ると戻る</li>
     <li>「数」のグラフはタップ（なぞる）と、その日の数が出る</li>
     <li>時間の速さは 1 日 = 8 秒・2 秒・0.5 秒から選べる</li>
@@ -236,10 +244,10 @@
   <p class="hint" id="flynote">3D の蠅: NeuroMechFly v2（flygym）。脳: FlyWire v783 のメスの全脳（13.9 万ニューロン）。</p>
 </div></details>
 
-<nav class="card links" data-tab="about"><a href="/">🏠 トップ（ひらがなを学ぶ蠅）</a><a href="/faq/">❓ よくある質問</a><a href="/tech/">🛠 技術の解説</a><a href="https://github.com/satorunet/hae/tree/main/life" target="_blank" rel="noopener">💻 この実験のソースコード（GitHub）<small style="display:block;color:var(--dim);font-size:.72rem">satorunet/hae の life/ — MIT ライセンス</small></a></nav>
+<nav class="card links" data-tab="about"><a href="/"><i class="fa-solid fa-house" aria-hidden="true"></i> トップ（ひらがなを学ぶ蠅）</a><a href="/faq/"><i class="fa-solid fa-circle-question" aria-hidden="true"></i> よくある質問</a><a href="/tech/"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i> 技術の解説</a><a href="/life-dev/"><i class="fa-solid fa-flask" aria-hidden="true"></i> 試験版: オスの脳も動かす<small style="display:block;color:var(--dim);font-size:.72rem">Male CNS でオスの行動も脳で決める。重い</small></a><a href="https://github.com/satorunet/hae/tree/main/life" target="_blank" rel="noopener"><i class="fa-brands fa-github" aria-hidden="true"></i> この実験のソースコード（GitHub）<small style="display:block;color:var(--dim);font-size:.72rem">satorunet/hae の life/ — MIT ライセンス</small></a></nav>
 
 <h2 class="sec" data-tab="about">しくみと研究データ</h2>
-  <details class="card note" data-tab="about"><summary><span class="ic">🧠</span>何をしているか</summary>
+  <details class="card note" data-tab="about"><summary><span class="ic"><i class="fa-solid fa-brain" aria-hidden="true"></i></span>何をしているか</summary>
   <div class="nb">
   <ul>
     <li><b>歌</b>: パルス歌は 35 ms ごとに 10 ms の音、正弦歌は鳴りっぱなし（聞こえる音は、翅のひと振りごとに空気が押し出される風の音を混ぜ、音の高さ・間隔・強さを少しずつ揺らして、機械的に聞こえないようにしている。脳への刺激は元のとおり）。音の来る側の触角（ジョンストン器官の JO-A/B、358 個）を強く、反対側を弱く、ポアソン発火で刺激する</li>
@@ -251,13 +259,13 @@
   <details class="card note" data-tab="about"><summary><span class="ic"><i class="sx m"></i></span>オスについて</summary>
   <div class="nb">
   <ul>
-    <li><b>体</b>: オスの蠅の 3D モデルは存在しない（NeuroMechFly はメスの CT スキャン）ので、同じ体を 0.85 倍にし、オス特有の黒い腹部の先を付けた手作り</li>
-    <li><b>行動</b>: オスの脳はまだ入れていない。近づく → 前脚でたたく → 片翅を広げて歌う（パルス歌と正弦歌を交互に）→ メスが立ち止まれば乗って交尾、14 秒受け入れられなければあきらめる、という台本で動く</li>
+    <li><b>体</b>: NeuroMechFly の 3D の体はメスの CT スキャンから作られていてオスの体はないので、同じ体を 0.85 倍にし、オス特有の黒い腹部の先を付けている</li>
+    <li><b>行動</b>: このページではオスの脳は動かさず、近づく → 前脚でたたく → 片翅を広げて歌う（パルス歌と正弦歌を交互に）→ メスが立ち止まれば乗って交尾、14 秒受け入れられなければあきらめる、という決めた手順で動く。オスの配線図（Male CNS v1.0）でオスの脳を動かし、行動も脳の発火で決める試験版は <a href="/life-dev/">/life-dev/</a>（違いは「このモデルで実際にわかったこと」に）</li>
     <li><b>歌</b>: オスの位置から、メスの頭に対する左右と距離を計算し、メスの脳の聴覚ニューロンにそのまま入れる。聞こえる音も同じ位置・同じタイミング。画面では、震える翅からメスの頭へ光のビームが伸び、歌の波形（オレンジ = パルス歌、青 = 正弦歌）がそれに沿って流れる</li>
     <li><b>交尾</b>: 実際は約 20 分続く。ここでは 15 秒に縮めている。終わるとメスは「交尾済み」になる</li>
   </ul>
   </div></details>
-  <details class="card note" data-tab="about"><summary><span class="ic">🥚</span>成長と寿命について</summary>
+  <details class="card note" data-tab="about"><summary><span class="ic"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i></span>成長と寿命について</summary>
   <div class="nb">
   <ul>
     <li><b>日数</b>: 25℃ での実際の発生の日数に合わせ、画面では「1 日 = 8 秒」（2 秒・0.5 秒にも切り替え可）に縮めている。縮めているのは発生と老化の時間だけで、歩く・歌う・交尾するなどの行動は実時間のまま</li>
@@ -275,7 +283,7 @@
     <li><b>死ぬとき</b>: 脚が震えて体が沈み、横に倒れながら仰向けに転がり、脚をぴくぴくさせながら縮めて動かなくなる</li>
   </ul>
   </div></details>
-  <details class="card note" data-tab="about"><summary><span class="ic">🍌</span>餌と飛行について</summary>
+  <details class="card note" data-tab="about"><summary><span class="ic"><i class="fa-solid fa-apple-whole" aria-hidden="true"></i></span>餌と飛行について</summary>
   <div class="nb">
   <ul>
     <li><b>餌</b>: 果物のまわりの地面に、果汁の滴や酵母の塊が約 10 秒ごとに湧く（同時に最大 6 個）。<b>画面をタップすると、その場所に餌を置ける</b>（最大 12 個、超えると古いものから消える）。食べられると小さくなり、なくなると消える</li>
@@ -283,17 +291,17 @@
     <li><b>餌がないとき（成虫）</b>: 地面に餌がなければ、成虫は死骸・卵・幼虫を食べずに餓死する（下の「共食いと死骸についての研究データ」を参照）</li>
     <li><b>餓死</b>: 餌にありつけないまま約 105 秒たつと餓死する（ドクロが出る）。空腹は実時間で進める（行動は実時間なので。実物は餌なしで 2〜3 日ほど生きる）。親の空腹度は画面上部に表示</li>
     <li><b>飛ぶ</b>: ときどき気まぐれに短く飛んで別の場所に降りる。翅は残像付きで羽ばたき、脚をたたむ</li>
-    <li>いずれも台本による動きで、脳のシミュレーションではない</li>
+    <li>食べる・飛ぶ・餓死は決めた手順による動きで、脳のシミュレーションではない</li>
   </ul>
   </div></details>
-  <details class="card note" data-tab="about"><summary><span class="ic">👂</span>聴いている様子について</summary>
+  <details class="card note" data-tab="about"><summary><span class="ic"><i class="fa-solid fa-ear-listen" aria-hidden="true"></i></span>聴いている様子について</summary>
   <div class="nb">
   <ul>
     <li><b>オスの翅</b>: 本物の翅の振動はパルスが 35 ms 間隔と速すぎて目に見えないので、見える速さで震わせ、振れ幅の範囲に残像を重ねている（パルス歌は大きく小刻みに、正弦歌は小さく一定に）</li>
     <li><b>メス</b>: 歌が聞こえると立ち止まり、頭を歌の方へ向け、触角の先のアリスタ（音を捉えてジョンストン器官を動かす羽毛状の部分）を歌に合わせて震わせる。体の向き直りは、脳の DNp12 の左右差で決まる</li>
   </ul>
   </div></details>
-  <details class="card note" data-tab="about"><summary><span class="ic">📄</span>共食いと死骸についての研究データ</summary>
+  <details class="card note" data-tab="about"><summary><span class="ic"><i class="fa-solid fa-file-lines" aria-hidden="true"></i></span>共食いと死骸についての研究データ</summary>
   <div class="nb">
   <p class="sub">上の「幼虫と死骸」「幼虫どうしの共食い」「死骸に産む」、そして成虫が死骸などを食べないことは、次の実験結果にもとづいている。数値（距離・確率・量）は画面用に決めたもので、論文の値ではない。</p>
   <ul>
@@ -308,7 +316,7 @@
       <a href="https://journals.plos.org/plosbiology/article?id=10.1371/journal.pbio.2006012" target="_blank" rel="noopener">Narasimha S ほか (2019) Drosophila melanogaster cloak their eggs with pheromones, which prevents cannibalism. PLOS Biology 17:e2006012</a></li>
   </ul>
   </div></details>
-  <details class="card note" data-tab="about"><summary><span class="ic">🪺</span>産卵について</summary>
+  <details class="card note" data-tab="about"><summary><span class="ic"><i class="fa-solid fa-egg" aria-hidden="true"></i></span>産卵について</summary>
   <div class="nb">
   <ul>
     <li><b>流れ</b>: 交尾が終わる → 卵の成熟を待つ（実際は数時間。ここでは 6 秒）→ 果物を探して歩く → 果物の上で産卵管を当てて探る → 産卵の指令ニューロン <b>oviDNa</b> が 4 Hz を超えて 1 秒続いたら卵を 1 個産む → ひと休みしてまた探る</li>
@@ -317,33 +325,40 @@
     <li><b>手作りの部分</b>: 果物まで歩く道筋、腹部を曲げる動き、卵の形（白い約 0.5 mm の楕円に 2 本の背側付属糸）。産卵場所は、発酵し始めた熟れたバナナの輪切り（果汁、酵母の白い点、黒ずんだ皮）</li>
   </ul>
   </div></details>
-  <details class="card note" data-tab="about"><summary><span class="ic">🔬</span>このモデルで実際にわかったこと</summary>
+  <details class="card note" data-tab="about"><summary><span class="ic"><i class="fa-solid fa-microscope" aria-hidden="true"></i></span>このモデルで実際にわかったこと</summary>
   <div class="nb">
   <ul>
     <li><b>配線</b>: vpoDN への入力は pC1a が最大（382 シナプス）、次が歌を検出する vpoEN（169）。「歌の経路と交尾意欲が vpoDN で合流する」という実験でわかっている構造が、配線図にそのまま入っている</li>
     <li><b>pC1 → vpoDN は動く</b>: pC1 への入力に比例して vpoDN が発火する（入力 10 Hz → 約 6 Hz、20 Hz → 約 18 Hz）</li>
     <li><b>音へ向く反応は動く</b>: 左から聴かせると左の DNp12 が約 100 Hz、右からだと右が優位になる</li>
     <li><b>歌 → vpoEN は、このモデルでは通らない</b>: 歌の信号は聴覚の中継（DNg29 など）まで届くが、vpoEN への主な興奮性入力（CB1484）がほとんど発火せず、vpoEN は 0 Hz のまま。強い連続音を入れると、今度は vpoEN を抑える GABA 細胞 WED104 が発火する。このモデルは全シナプスを同じ強さで扱い、本物の神経の「特定のリズムだけに反応する」性質もないためと考えられる</li>
+    <li><b>オスの脳でも試した</b>: オスの配線図 Male CNS v1.0（Janelia FlyEM・ケンブリッジ大・MRC LMB・Google Research、脳と腹髄、CC-BY 4.0）をメスと同じ LIF モデルで動かし、同じ入力を 1 秒ずつ 3 回入れて比べた。オスの脳も動かす試験版は <a href="/life-dev/">/life-dev/</a>（脳を 2 つ読むので重い。オスの近づく・歌う・あきらめるを脳の発火で決めている）</li>
+    <li><b>オス: P1 → pIP10 → 胸の dPR1 は動く</b>: 求愛の司令 P1 に 30 Hz を入れると、歌の下行性 pIP10 が約 53 Hz、胸の歌の回路 dPR1 が約 57 Hz。実験で知られる「P1 が歌の命令 pIP10 を動かす」経路が、脳から腹髄まで配線図のとおりに動く。パルス歌を作る vPR6・vMS11 は 0 Hz のまま</li>
+    <li><b>オス: 感覚だけでは P1 に届かない</b>: 前脚の味覚 ppk23 でも視覚 LC10a でも P1 は 0〜1 Hz。メスの「歌 → vpoEN」と同じく、意欲を決める細胞まで感覚が届かない</li>
+    <li><b>雌雄の違い: 同じ系統の細胞の行き先</b>: メスの pC1 を刺激すると受け入れの vpoDN（約 30 Hz）、オスの P1（pC1 と同じ系統のオス特有の細胞）を刺激すると歌の pIP10 と dPR1。pIP10 は Male CNS でオス特有と注釈され、FlyWire の注釈にはない</li>
+    <li><b>雌雄の違い: 視覚 LC10a の行き先</b>: LC10a に 100 Hz を入れると、オスでは P1 を通らずに pIP10 が約 23 Hz、dPR1 が約 28 Hz。メスでは、読んでいる受け入れ・産卵・向きの細胞はどれも 0 Hz</li>
+    <li><b>同じところ: 音へ向く DNp12</b>: 左から歌を聴かせると、メスは左 101 / 右 38 Hz、オスは左 111 / 右 32 Hz で、どちらも音の側が強い</li>
+    <li><b>行動としては大きな差にならなかった</b>: どの細胞の発火をどの行動につなぐかは雌雄それぞれで決めているので、画面で見える求愛の流れはオスの脳を入れても変わらなかった。雌雄の配線図は作り方（撮影法とシナプスの数え方）が違い、Male CNS はシナプスが約 1.9 倍多く数えられていて重みを補正する必要があったので、発火の強さの細かい差は雌雄差とは言い切れない。このページは、メスの脳 1 つで動かしている</li>
   </ul>
   </div></details>
-  <details class="card note" data-tab="about"><summary><span class="ic">🧩</span>仮定している部分</summary>
+  <details class="card note" data-tab="about"><summary><span class="ic"><i class="fa-solid fa-puzzle-piece" aria-hidden="true"></i></span>仮定している部分</summary>
   <div class="nb">
   <p>そこで「歌を聴いたら pC1 を強める」（未交尾 +15 Hz、交尾済み +3 Hz）を仮に入れている。実際のメスの蠅でも pC1 が歌に反応することは報告されているが、このモデルではその経路が再現できていないため、外から補っている。（外すとモデルそのままの結果になり、歌を聴いても vpoDN はほとんど上がらない。）</p>
   </div></details>
-  <details class="card note" data-tab="about"><summary><span class="ic">📚</span>使ったもの</summary>
+  <details class="card note" data-tab="about"><summary><span class="ic"><i class="fa-solid fa-book" aria-hidden="true"></i></span>使ったもの</summary>
   <div class="nb">
-  <p>FlyWire v783（CC-BY 4.0）、細胞型注釈 Schlegel et al. 2024（CC-BY 4.0）、Shiu et al. 2024 の LIF モデル（<a href="/tech/">WASM 版</a>）、暴走を止める 161 ニューロン（<a href="/ningen/">人体の実験</a>で特定）、NeuroMechFly v2。</p>
+  <p>FlyWire v783（CC-BY 4.0）、細胞型注釈 Schlegel et al. 2024（CC-BY 4.0）、Shiu et al. 2024 の LIF モデル（<a href="/tech/">WASM 版</a>）、暴走を止める 161 ニューロン（<a href="/ningen/">人体の実験</a>で特定）、NeuroMechFly v2。試験版と比較: Male CNS v1.0（Janelia FlyEM ほか、CC-BY 4.0）。</p>
   </div></details>
 
 <footer data-tab="about">オスが近づいて前脚でたたき、片翅を震わせて歌う。メスの全脳がその歌を聴き、歌の方を向くか、立ち止まって受け入れるかは、メスの脳の下行性ニューロンの発火で決まる。</footer>
 
 <nav class="tabbar" aria-label="表示の切り替え">
-  <button data-go="play" aria-selected="true"><span>🪰</span>観察</button>
-  <button data-go="record" aria-selected="false"><span>📈</span>数</button>
-  <button data-go="brain" aria-selected="false"><span>⚡</span>脳</button>
-  <button data-go="about" aria-selected="false"><span>📚</span>その他</button>
+  <button data-go="play" aria-selected="true"><span><i class="fa-solid fa-eye" aria-hidden="true"></i></span>観察</button>
+  <button data-go="record" aria-selected="false"><span><i class="fa-solid fa-chart-line" aria-hidden="true"></i></span>数</button>
+  <button data-go="brain" aria-selected="false"><span><i class="fa-solid fa-brain" aria-hidden="true"></i></span>脳</button>
+  <button data-go="about" aria-selected="false"><span><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></span>その他</button>
 </nav>
 
-<script type="module" src="./app.js?v=92"></script>
+<script type="module" src="./app.js?v=95"></script>
 </body>
 </html>
