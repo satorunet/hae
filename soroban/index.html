@@ -404,7 +404,7 @@
 
 <section data-tab="other">
 <h2>このそろばんのソース</h2>
-<p class="note">ページも脳も、置いてあるものが全部です。<a href="https://github.com/satorunet/hae/tree/main/soroban">satorunet/hae の soroban/</a>（MIT）。</p>
+<p class="note"><a href="https://github.com/satorunet/hae/tree/main/soroban">satorunet/hae/soroban</a></p>
 <ul class="libs">
   <li><a href="https://github.com/satorunet/hae/blob/main/soroban/soroban.mjs"><code>soroban.mjs</code></a><small>そろばんの回路そのもの。棒・珠・ゲートを脳に足す</small></li>
   <li><a href="https://github.com/satorunet/hae/blob/main/soroban/bake-soroban.mjs"><code>bake-soroban.mjs</code></a><small>ブラウザ用に脳を切り出し、全脳と答えを突き合わせてから書き出す</small></li>
@@ -458,13 +458,13 @@
   // Browsers hold on to this file, so a new version of the page can sit unseen behind an old one.
   // This asks the server for it once, and if what comes back is newer than what is running, reloads.
   (function () {
-    const mine = 118;
+    const mine = 119;
     fetch(location.pathname, { cache: 'reload' }).then((r) => r.text()).then((t) => {
       const m = t.match(/app\.js\?v=(\d+)/);
       if (m && +m[1] > mine) location.replace(location.pathname + '?v=' + m[1]);
     }).catch(() => {});
   })();
 </script>
-<script type="module" src="./app.js?v=118"></script>
+<script type="module" src="./app.js?v=119"></script>
 </body>
 </html>

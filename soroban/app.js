@@ -8,7 +8,7 @@ import { makeStage } from './stage.js?v=29';
 import { Sound } from '../juku/sound.js';
 
 const $ = (id) => document.getElementById(id);
-const PAGE_V = 'v118 / stage29';        // shown on the page, so a stale file can be seen at a glance
+const PAGE_V = 'v119 / stage29';        // shown on the page, so a stale file can be seen at a glance
 addEventListener('error', (e) => { const s = $('say'); if (s) s.textContent = 'エラー: ' + (e.message || e.type); });
 addEventListener('unhandledrejection', (e) => { const s = $('say'); if (s) s.textContent = 'エラー: ' + ((e.reason && e.reason.message) || e.reason); });
 const snd = new Sound();
