@@ -47,6 +47,12 @@
   .wide table{margin:0;min-width:100%}
   td.n,th.n{white-space:nowrap}
   .wide th{white-space:nowrap}
+  .libs{list-style:none;margin:10px 0;padding:0;display:grid;grid-template-columns:1fr;gap:6px}
+  .libs li{padding:8px 12px;border-radius:9px;background:#11161c;border:1px solid var(--line);font-size:.9rem}
+  .libs li a{color:#9fd0ff;text-decoration:none;font-weight:600}
+  .libs li code{background:none;border:0;padding:0;font-size:.9em}
+  .libs li small{display:block;color:var(--dim);font-size:.74rem;margin-top:1px;line-height:1.6}
+  @media (min-width:620px){ .libs{grid-template-columns:repeat(2,minmax(0,1fr))} }
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:16px 0}
   .bad{color:var(--bad)} .good{color:var(--good)} .warm{color:var(--warm)}
   .lead{font-size:1rem;line-height:1.8}
@@ -397,26 +403,50 @@
 </section>
 
 <section data-tab="other">
+<h2>このそろばんのソース</h2>
+<p class="note">ページも脳も、置いてあるものが全部です。<a href="https://github.com/satorunet/hae/tree/main/soroban">satorunet/hae の soroban/</a>（MIT）。</p>
+<ul class="libs">
+  <li><a href="https://github.com/satorunet/hae/blob/main/soroban/soroban.mjs"><code>soroban.mjs</code></a><small>そろばんの回路そのもの。棒・珠・ゲートを脳に足す</small></li>
+  <li><a href="https://github.com/satorunet/hae/blob/main/soroban/bake-soroban.mjs"><code>bake-soroban.mjs</code></a><small>ブラウザ用に脳を切り出し、全脳と答えを突き合わせてから書き出す</small></li>
+  <li><a href="https://github.com/satorunet/hae/blob/main/soroban/soroban-worker.js"><code>soroban-worker.js</code></a><small>脳を走らせるワーカー。20 ms ごとに珠の状態を画面へ送る</small></li>
+  <li><a href="https://github.com/satorunet/hae/blob/main/soroban/stage.js"><code>stage.js</code></a><small>3D の盤と蠅。珠の物理と、六本の脚の逆運動学</small></li>
+  <li><a href="https://github.com/satorunet/hae/blob/main/soroban/app.js"><code>app.js</code></a><small>電卓の画面、脳の発火表示、珠から数を読む所</small></li>
+  <li><a href="https://github.com/satorunet/hae/blob/main/soroban/README.md"><code>README.md</code></a><small>全測定値と、うまくいかなかった配線の記録</small></li>
+</ul>
+
+<h2>そろばんの土台になったもの</h2>
+<ul class="libs">
+  <li><a href="../kakou/">kakou — 脳に回路を足す</a><small>輪・消去・脱抑制ゲート・状態機械。この四つだけでそろばんを組んだ</small></li>
+  <li><a href="../kakou/graft.mjs"><code>kakou/graft.mjs</code></a><small>コネクトームに細胞を足す工房。元の配線は 1 本も変えない（このサーバ上のソース）</small></li>
+  <li><a href="https://github.com/satorunet/hae/blob/main/flybrain/src/brain.c"><code>flybrain/</code>（wasm）</a><small>13.8 万ニューロンの LIF を回す本体。ブラウザで動いているのはこれ</small></li>
+  <li><a href="./shikumi.html">しくみ（詳細）</a><small>珠の符号化、繰り上がり、追加したニューロン群の全表</small></li>
+</ul>
+
+<h2>使ったライブラリ・データ</h2>
+<ul class="libs">
+  <li><a href="https://github.com/philshiu/Drosophila_brain_model" target="_blank" rel="noopener">Drosophila_brain_model</a><small>全脳の LIF モデル（Shiu et al., <i>Nature</i> 2024）— MIT。WebAssembly に書き直して使用</small></li>
+  <li><a href="https://codex.flywire.ai/" target="_blank" rel="noopener">FlyWire コネクトーム v783</a><small>13.9 万個の神経細胞と結合（Dorkenwald, Matsliah et al. 2024）— CC-BY 4.0</small></li>
+  <li><a href="https://github.com/flyconnectome/flywire_annotations" target="_blank" rel="noopener">flywire_annotations</a><small>細胞型の注釈（Schlegel et al. 2024）— CC-BY 4.0</small></li>
+  <li><a href="https://github.com/NeLy-EPFL/flygym" target="_blank" rel="noopener">flygym / NeuroMechFly v2</a><small>珠を打っている蠅の体と関節 — Apache-2.0</small></li>
+  <li><a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><small>3D 表示 — MIT</small></li>
+</ul>
+
 <h2>ほかのハエのページ</h2>
-<p class="note" style="line-height:2.2">
-<a href="../">ひらがなを読み書きするハエ</a>　·　
-<a href="../suji/">数字を読むハエ</a>　·　
-<a href="../kakou/">脳に回路を足す（kakou）</a>　·　
-<a href="../kaiwa/">2 匹の会話</a>　·　
-<a href="../shinka/">進化するハエ脳</a>　·　
-<a href="../ningen/">人体を操るハエ脳</a>　·　
-<a href="https://github.com/satorunet/hae">ソースコード（GitHub）</a></p>
-<h2>このページの中身</h2>
-<p class="note"><code>soroban/soroban.mjs</code> そろばんの回路／<code>soroban/bake-soroban.mjs</code> ブラウザ用に焼いて検算／
-<code>soroban/stage.js</code> 3D の盤面と蠅／<code>soroban/soroban-worker.js</code> 脳を走らせるワーカー。
-測定値は <code>soroban/README.md</code>。</p>
+<ul class="libs">
+  <li><a href="../">ひらがなを読み書きするハエ</a><small>脳で字を読み、脚で書く</small></li>
+  <li><a href="../suji/">数字を読むハエ</a><small>手書き数字を 89.6% で読む。そろばんと同じ脳</small></li>
+  <li><a href="../kaiwa/">2 匹の会話</a><small>脳と脳をつないで話させる</small></li>
+  <li><a href="../shinka/">進化するハエ脳</a><small>世代を重ねて配線を選ぶ</small></li>
+  <li><a href="../ningen/">人体を操るハエ脳</a><small>蠅の脳で人間の体を動かす</small></li>
+  <li><a href="../life/">ハエLIFE</a><small>求愛の歌から世代がつながるまで</small></li>
+</ul>
 </section>
 
 <nav class="tabbar" aria-label="表示の切り替え">
   <button data-go="calc" aria-selected="true"><span>🧮</span>そろばん</button>
   <button data-go="brain" aria-selected="false"><span>🧠</span>脳</button>
   <button data-go="how" aria-selected="false"><span>📖</span>しくみ</button>
-  <button data-go="other" aria-selected="false"><span>🪰</span>ほか</button>
+  <button data-go="other" aria-selected="false"><span>📚</span>資料</button>
 </nav>
 
 <footer>
@@ -428,13 +458,13 @@
   // Browsers hold on to this file, so a new version of the page can sit unseen behind an old one.
   // This asks the server for it once, and if what comes back is newer than what is running, reloads.
   (function () {
-    const mine = 116;
+    const mine = 117;
     fetch(location.pathname, { cache: 'reload' }).then((r) => r.text()).then((t) => {
       const m = t.match(/app\.js\?v=(\d+)/);
       if (m && +m[1] > mine) location.replace(location.pathname + '?v=' + m[1]);
     }).catch(() => {});
   })();
 </script>
-<script type="module" src="./app.js?v=116"></script>
+<script type="module" src="./app.js?v=117"></script>
 </body>
 </html>
