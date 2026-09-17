@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ハエにそろばん覚えさせてみた</title>
+<meta name="description" content="実在のショウジョウバエの全脳コネクトーム（13.9 万ニューロン）に、そろばんの回路を移植しました。8 桁の足し算・引き算・かけ算を、蠅が六本の脚で珠を弾いて解きます。ブラウザで動いているのは本物のスパイキング神経回路です。">
+<meta name="robots" content="noindex">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://hae.satoru.net/soroban/">
+<meta property="og:title" content="ハエにそろばん覚えさせてみた">
+<meta property="og:description" content="実在のショウジョウバエの全脳コネクトーム（13.9 万ニューロン）に、そろばんの回路を移植しました。8 桁の足し算・引き算・かけ算を、蠅が六本の脚で珠を弾いて解きます。ブラウザで動いているのは本物のスパイキング神経回路です。">
+<meta property="og:image" content="https://hae.satoru.net/og-soroban.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="そろばんの上に立った蠅が、六本の脚で珠を弾いている">
+<meta property="og:locale" content="ja_JP">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ハエにそろばん覚えさせてみた">
+<meta name="twitter:description" content="実在のショウジョウバエの全脳コネクトーム（13.9 万ニューロン）に、そろばんの回路を移植しました。8 桁の足し算・引き算・かけ算を、蠅が六本の脚で珠を弾いて解きます。ブラウザで動いているのは本物のスパイキング神経回路です。">
+<meta name="twitter:image" content="https://hae.satoru.net/og-soroban.png">
+<style>
+  :root{ --bg:#0b0e12; --card:#141a21; --card2:#10151b; --line:#232c36; --ink:#e8eef4; --dim:#8c99a8;
+    --ok:#59b7ff; --warm:#ffb454; --good:#54d98c; --vio:#b69cff; --bad:#ff7b7b; }
+  *{box-sizing:border-box}
+  html{background:var(--bg)}
+  body{margin:0 auto;background:var(--bg);color:var(--ink);font:15px/1.8 system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+    max-width:780px;padding-block:max(14px,env(safe-area-inset-top)) max(48px,env(safe-area-inset-bottom));padding-inline:16px;-webkit-text-size-adjust:100%}
+  a{color:var(--ok)}
+  h1{font-size:1.32rem;line-height:1.35;margin:0 0 6px}
+  h1 small{display:block;font-size:.78rem;font-weight:500;color:var(--dim);margin-top:6px;line-height:1.7}
+  h2{font-size:1.06rem;margin:38px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  h3{font-size:.95rem;margin:24px 0 4px;color:var(--warm)}
+  p{margin:9px 0}
+  ul,ol{margin:9px 0;padding-left:1.3em}
+  li{margin:5px 0}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.86em;background:var(--card2);border:1px solid var(--line);border-radius:5px;padding:0 4px}
+  pre{background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:auto;font-size:.8rem;line-height:1.65}
+  pre code{background:none;border:0;padding:0}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:.84rem}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--dim);font-weight:600}
+  td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .note{font-size:.82rem;color:var(--dim)}
+  /* tables: numbers stay on one line and the table scrolls sideways rather than folding */
+  .wide{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:12px 0}
+  .wide table{margin:0;min-width:100%}
+  td.n,th.n{white-space:nowrap}
+  .wide th{white-space:nowrap}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:16px 0}
+  .bad{color:var(--bad)} .good{color:var(--good)} .warm{color:var(--warm)}
+  .lead{font-size:1rem;line-height:1.8}
+  footer{margin-top:48px;font-size:.82rem;color:var(--dim);border-top:1px solid var(--line);padding-top:14px}
+</style>
+
+<style>
+  .calc{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin:14px 0;
+    touch-action:manipulation;position:relative;overflow:hidden}
+  .calc *{touch-action:manipulation}
+  .calc .pad,.calc .pad *,.calc .tools,.calc .tools *,.calc .stagewrap,
+  .calc .num,.calc .tape,.calc .phases,.calc .phases *{
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+  [hidden]{display:none!important}
+  .tape{font:600 1.05rem/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums;
+    color:var(--ink);text-align:right;min-height:1.5em;padding:2px 4px 0;border-bottom:1px solid var(--line)}
+  .numrow{display:flex;align-items:center;gap:10px}
+  .brainwrap{flex:0 1 50%;min-width:0;position:relative}
+  #brain{display:block;width:100%;height:46px;border-radius:8px;background:#0b0e12;border:1px solid var(--line)}
+  .brainwrap span{position:absolute;left:6px;top:2px;font-size:.54rem;color:var(--dim);letter-spacing:.04em}
+  .num{flex:0 0 auto;font:700 clamp(1.05rem,5.6vw,1.7rem)/1.1 ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-variant-numeric:tabular-nums;
+    text-align:right;letter-spacing:.06em;color:var(--ok);text-shadow:0 0 18px rgba(89,183,255,.25);
+    align-self:center}
+  .phases{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:.72rem;color:var(--dim);margin-top:8px}
+  .phases b{display:inline-block;padding:2px 7px;border:1px solid var(--line);border-radius:999px;font-weight:600;opacity:.45}
+  .phases b.on{opacity:1;border-color:var(--warm);color:var(--warm);background:rgba(255,180,84,.08)}
+  .phases span.rl{margin-left:auto;font-variant-numeric:tabular-nums}
+  .spikewrap{height:3px;background:var(--card2);border-radius:2px;margin:8px 0 2px;overflow:hidden}
+  #spike{height:100%;width:0;background:linear-gradient(90deg,var(--ok),var(--vio));transition:width .08s linear}
+  /* the 3D stage: the soroban and the flies live in here (soroban/stage.js) */
+  .stagewrap{position:relative;margin:10px 0 2px;border-radius:12px;overflow:hidden;
+    background:radial-gradient(120% 90% at 50% 15%,#141c26 0%,#0a0d11 75%);border:1px solid var(--line);
+    animation:soroin .45s ease-out}
+  #stage{display:block;width:100%;aspect-ratio:16/10}
+  @keyframes soroin{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+  .loopline{font-size:.66rem;color:var(--dim);text-align:left;margin:2px 0 0}
+  .say{margin:9px 0 2px;font-size:.82rem;min-height:2.4em;color:var(--ink)}
+  .say b{color:var(--ok);font-size:1.1em}
+  .pad{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:8px}
+  .pad button{font:600 1.1rem/1 ui-monospace,Menlo,monospace;padding:12px 0;border-radius:10px;cursor:pointer;
+    background:var(--card2);color:var(--ink);border:1px solid var(--line);touch-action:manipulation;
+    -webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+  .pad button:active{background:#1b232c}
+  .pad button.op{color:var(--warm)} .pad button.eq{color:#06121c;background:var(--ok);border-color:var(--ok)}
+  .pad button.c{color:var(--bad)}
+  body.running .pad button{opacity:.4;pointer-events:none}
+  .tools{display:flex;gap:8px;align-items:center;margin-top:10px;font-size:.75rem;color:var(--dim)}
+  .tools button{font:inherit;padding:4px 9px;border-radius:999px;background:var(--card2);color:var(--dim);
+    border:1px solid var(--line);cursor:pointer;touch-action:manipulation}
+  .tools button.on{color:var(--ok);border-color:var(--ok)}
+  #stop{margin-left:auto;color:var(--bad);opacity:.5;pointer-events:none}
+  body.running #stop{opacity:1;pointer-events:auto}
+  /* the footer bar, and one panel at a time */
+  body{padding-bottom:78px}
+  body[data-tab="calc"] section:not([data-tab="calc"]),
+  body[data-tab="brain"] section:not([data-tab="brain"]),
+  body[data-tab="how"] section:not([data-tab="how"]),
+  body[data-tab="other"] section:not([data-tab="other"]){display:none}
+  .tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:60;background:rgba(11,14,18,.96);
+    border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom));
+    -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);max-width:780px;margin:0 auto}
+  .tabbar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;background:transparent;
+    border:0;color:var(--dim);font:inherit;font-size:.72rem;padding:6px 0;border-radius:10px;min-height:50px;
+    cursor:pointer;touch-action:manipulation}
+  .tabbar button span{font-size:1.2rem;line-height:1.1}
+  .tabbar button[aria-selected="true"]{color:var(--ink);background:#1b2229}
+  .fig{margin:16px 0;padding:0}
+  .fig svg{width:100%;height:auto;display:block;background:#0b0e12;border:1px solid var(--line);border-radius:12px}
+  .fig figcaption{font-size:.72rem;color:var(--dim);margin-top:6px;line-height:1.7}
+  .parts div{border-left:2px solid var(--line);padding:1px 0 1px 11px;margin:12px 0}
+  .parts b{color:var(--warm);font-size:.95rem}
+  .parts em{font-style:normal;color:var(--dim);font-size:.78rem;margin-left:8px}
+  .parts p{margin:4px 0 0}
+  #bigbrain{display:block;width:100%;height:210px;border-radius:12px;background:#0b0e12;border:1px solid var(--line)}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;font-size:.7rem;color:var(--dim);margin-top:8px}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+</style>
+
+</head>
+<body data-tab="calc">
+
+<h1>ハエにそろばん覚えさせてみた</h1>
+
+<section data-tab="calc">
+<div class="card calc" id="calc">
+  <div class="numrow">
+    <div class="brainwrap"><canvas id="brain"></canvas><span>脳の発火</span></div>
+    <div class="num" id="num">00000000</div>
+  </div>
+
+  <div class="stagewrap" id="stagewrap"><canvas id="stage"></canvas></div>
+  <div class="loopline" id="loopline" hidden>いちばん左の棒は<strong>かけ算の残り回数</strong> — 残り <b id="loopn">0</b></div>
+
+  <div class="say" id="say">そろばん脳を読み込んでいます…</div>
+
+  <div class="tape" id="tape">0</div>
+
+  <div id="pad" class="pad">
+    <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button><button class="op" data-k="*">×</button>
+    <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button><button class="op" data-k="-">−</button>
+    <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button><button class="op" data-k="+">＋</button>
+    <button class="c" data-k="C">C</button><button data-k="0">0</button><button class="eq" data-k="=" style="grid-column:span 2">=</button>
+  </div>
+
+  <div class="tools">
+    <span>速さ</span>
+    <span id="speed"><button data-v="1">等速</button><button data-v="4">4倍</button><button data-v="99" class="on">最速</button></span>
+    <button id="mute" title="音">🔊</button>
+    <button id="stop">止める</button>
+  </div>
+</div>
+</section>
+
+<section data-tab="brain">
+<div class="card">
+  <h2 style="margin-top:4px">脳の発火</h2>
+  <canvas id="bigbrain"></canvas>
+  <div class="legend">
+    <span><i style="background:#ffb454"></i>時計を入れている感覚ニューロン 216 個</span>
+    <span><i style="background:#59b7ff"></i>足したそろばん回路 34,760 細胞（右のらせん）</span>
+    <span><i style="background:#5d7285"></i>そのほか</span>
+    <span><i style="background:#1b232c;border:1px solid #2a3441"></i>ハエの脳ぜんたい（13.8 万ニューロン）</span>
+  </div>
+  <div class="spikewrap" style="margin-top:10px"><div id="spike"></div></div>
+  <div class="phases">
+    <b id="ph-tick">置く</b><b id="ph-carry">繰り上げ</b><b id="ph-tock">確定</b><b id="ph-clear">消す</b><b id="ph-other">—</b>
+    <span class="rl"><span id="runline">—</span>　ハエの時間 <b style="border:0;padding:0;opacity:1" id="flyt">0.0</b> 秒</span>
+  </div>
+  <p class="note">いちばん暗い点が<strong>ハエの脳そのもの</strong>（13.8 万ニューロンを 6 個に 1 個だけ描いたもの）で、正面から見た図です。
+  明るい点はこの計算機が使っている細胞。<strong>右のらせんは足した回路</strong>で、ハエの体の中に居場所がないので、
+  遺伝子のように一本の鎖として並べてあります。右の四角いブロックは、実在の座標を持たない<strong>加工した回路</strong>です。
+  20 ms ごとに<strong>本当に発火した細胞</strong>を送って、0.2 秒かけて減衰させています。</p>
+  <div class="note" id="build"></div>
+</div>
+</section>
+
+<section data-tab="how">
+
+<h2>ハエそろばんが実現していること</h2>
+
+<div class="parts">
+  <div><b>1. ハエの脳の拡張</b>
+    <p>既存の配線は 1 本も触らずに、新しいニューロンだけを足しました。元の脳の動きは 1 スパイクも変わらないまま、
+    <strong>できることだけが増えています</strong>。</p></div>
+
+  <div><b>2. 任意の機能と、仮想の記憶域を脳内に埋め込む</b>
+    <p>値を覚えておく場所（セーブ＆ループ）、消す仕組み、「〜のときだけ」の条件分岐、手順を進める仕組み。
+    この脳が持っていなかった<strong>記憶域と処理を、神経回路として脳の中に置きました</strong>。
+    そろばんは、その 4 つを組み合わせて作った“アプリ”にあたります。</p></div>
+
+  <div><b>3. 脳由来で結果を得る</b>
+    <p>答えは外のプログラムが計算したものではありません。<strong>脳の中で発火しているニューロンを読んだもの</strong>で、
+    画面の数字も珠の位置＝回路の状態そのものです。ブラウザがしているのは、合図を送ることと、発火を読むことだけです。</p></div>
+</div>
+
+<figure class="fig">
+<svg viewBox="0 0 400 560" role="img" aria-label="ハエの脳に計算APIを足してそろばんを作り、その発火を読んで答えにするまでの図">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#5d6a78"/>
+    </marker>
+    <style>
+      .b{fill:#141a21;stroke:#232c36}
+      .t{fill:#e8eef4;font:600 13px system-ui,sans-serif}
+      .s{fill:#8c99a8;font:11px system-ui,sans-serif}
+      .k{fill:#0e141a;stroke:#2f3a46}
+      .kt{fill:#cfe0f0;font:600 10.5px system-ui,sans-serif}
+      .ln{stroke:#5d6a78;fill:none;marker-end:url(#ar)}
+      .lb{fill:#8c99a8;font:10.5px system-ui,sans-serif}
+    </style>
+  </defs>
+
+  <!-- 1. the fly's own brain -->
+  <rect class="b" x="8" y="8" width="384" height="86" rx="12"/>
+  <text class="t" x="22" y="32">ハエの脳（実在の配線図・13.8 万ニューロン）</text>
+  <text class="s" x="22" y="52">味が消えて 50 ms で全体が沈黙 —— 覚えておく仕組みが無い</text>
+  <text class="s" x="22" y="70">この配線は 1 本も触らない（動きは 1 スパイクも変わらない）</text>
+  <g opacity=".5">
+    <circle cx="330" cy="62" r="2" fill="#5d7285"/><circle cx="340" cy="56" r="2" fill="#5d7285"/>
+    <circle cx="350" cy="64" r="2" fill="#5d7285"/><circle cx="360" cy="54" r="2" fill="#5d7285"/>
+    <circle cx="370" cy="62" r="2" fill="#5d7285"/><circle cx="345" cy="72" r="2" fill="#5d7285"/>
+  </g>
+
+  <path class="ln" d="M200 96 L200 122"/>
+  <text class="lb" x="208" y="114">ニューロンを足す</text>
+
+  <!-- 2. the added neurons = the calculation API -->
+  <rect class="b" x="8" y="128" width="384" height="112" rx="12" stroke="#59b7ff"/>
+  <text class="t" x="22" y="152">追加した新しいニューロン群 ＝ 計算 API</text>
+  <rect class="k" x="22" y="164" width="172" height="30" rx="8"/>
+  <text class="kt" x="34" y="183">セーブ＆ループ機能</text>
+  <rect class="k" x="206" y="164" width="172" height="30" rx="8"/>
+  <text class="kt" x="218" y="183">リセット機能</text>
+  <rect class="k" x="22" y="200" width="172" height="30" rx="8"/>
+  <text class="kt" x="34" y="219">条件分岐機能</text>
+  <rect class="k" x="206" y="200" width="172" height="30" rx="8"/>
+  <text class="kt" x="218" y="219">プログラム制御機能</text>
+
+  <path class="ln" d="M200 242 L200 268"/>
+  <text class="lb" x="208" y="260">4 つを組み合わせて作る</text>
+
+  <!-- 3. the soroban -->
+  <rect class="b" x="8" y="274" width="384" height="150" rx="12" stroke="#ffb454"/>
+  <text class="t" x="22" y="298">そろばん（この 4 つで作った“アプリ”）</text>
+  <text class="s" x="22" y="317">珠 1 個 ＝ セーブ 1 つ　／　規則 1 つ ＝ 条件分岐 1 つ</text>
+  <!-- a small soroban: frame, beam, beads -->
+  <rect x="120" y="330" width="160" height="82" rx="6" fill="#0e141a" stroke="#2f3a46"/>
+  <line x1="126" y1="352" x2="274" y2="352" stroke="#ffb454" stroke-width="2" opacity=".6"/>
+  <g>
+    <line x1="150" y1="336" x2="150" y2="406" stroke="#2f3a46"/>
+    <line x1="182" y1="336" x2="182" y2="406" stroke="#2f3a46"/>
+    <line x1="214" y1="336" x2="214" y2="406" stroke="#2f3a46"/>
+    <line x1="246" y1="336" x2="246" y2="406" stroke="#2f3a46"/>
+  </g>
+  <g fill="#c98f42">
+    <ellipse cx="150" cy="343" rx="9" ry="5"/><ellipse cx="182" cy="343" rx="9" ry="5"/>
+    <ellipse cx="214" cy="343" rx="9" ry="5"/><ellipse cx="246" cy="343" rx="9" ry="5"/>
+    <ellipse cx="150" cy="362" rx="9" ry="5"/><ellipse cx="182" cy="362" rx="9" ry="5"/>
+    <ellipse cx="214" cy="396" rx="9" ry="5"/><ellipse cx="246" cy="396" rx="9" ry="5"/>
+    <ellipse cx="150" cy="374" rx="9" ry="5"/><ellipse cx="182" cy="386" rx="9" ry="5"/>
+    <ellipse cx="214" cy="384" rx="9" ry="5"/><ellipse cx="246" cy="384" rx="9" ry="5"/>
+  </g>
+  <text class="s" x="22" y="404">梁に寄った珠だけが数に入る</text>
+
+  <path class="ln" d="M200 426 L200 452"/>
+  <text class="lb" x="208" y="444">発火を読む</text>
+
+  <!-- 4. the answer -->
+  <rect class="b" x="8" y="458" width="384" height="90" rx="12" stroke="#54d98c"/>
+  <text class="t" x="22" y="482">脳由来の答え</text>
+  <text class="s" x="22" y="502">画面の数字は、脳の外で計算した値ではなく</text>
+  <text class="s" x="22" y="520">発火しているニューロン（＝珠の位置）を読んだもの</text>
+  <text class="s" x="22" y="538">蠅はその珠を、6 本の脚で実際に弾いています</text>
+</svg>
+<figcaption>ハエの脳（触らない）＋ 足したニューロン（計算 API）＝ そろばん。答えはその発火から読みます。</figcaption>
+</figure>
+
+<h2>ハエの脳は 0.5 秒を覚えていられません</h2>
+<p>動いているのは、実在のショウジョウバエの配線図（13 万 8,639 ニューロン）そのままの脳です。
+味を 200 ミリ秒あたえて止めると、50 ミリ秒後には脳全体が沈黙し、発火しているニューロンは 1 個も残りません。
+だから「さっき見たものについて何かする」ができません。</p>
+
+<h2>そこに回路を足しました</h2>
+<p>配線表に空きが無いので、新しい結合を作ると既存の結合を潰すことになります。それでは元のハエでなくなるので、
+<strong>新しいニューロンを足す</strong>やり方にしました（<a href="../kakou/">kakou</a>）。既存の結合は 1 本も触りません。
+足した回路に何もつながなければ、元の脳と<strong>スパイク 1 発まで同じ</strong>に動きます。</p>
+
+<h2>追加した新しいニューロン群：計算 API</h2>
+
+<p>追加した新しいニューロン群が、元の脳に対して次の 4 つの機能を提供します。そろばんは、
+この 4 つだけを組み合わせて作ってあります。</p>
+
+<div class="parts">
+  <div><b>セーブ＆ループ機能</b><em>値を覚えておく</em>
+    <p>新しい細胞をぜんぶ互いにつないでも、活動はすぐ止まります。みんなが同時に発火するので、
+    送り合った信号が相手の<strong>休み時間</strong>（発火した直後の、何も受けつけない数ミリ秒）に届いて
+    捨てられてしまうからです。そこで細胞をいくつかの組に分け、<strong>隣の組だけを押す</strong>ようにしました。
+    バケツリレーのように信号が回り続けるので、10 秒経っても同じ調子です。この脳には状態を保つ仕組みが無いので、
+    <strong>ぐるぐる回し続けることが、そのまま「覚えている」ことになります</strong>
+    （初期のコンピュータの遅延線記憶と同じ考え方で、回すのをやめれば消えます）。
+    <strong>そろばんの珠 1 個が、このセーブ 1 個です。</strong></p></div>
+
+  <div><b>リセット機能</b><em>覚えたものを消す</em>
+    <p>セーブして回り続けているところに、別の細胞から「止まれ」を送ると消えます。弱すぎると消えず、
+    強すぎると効きすぎて<strong>二度と立ち上がりません</strong>。ちょうどよい強さの幅がありました。</p></div>
+
+  <div><b>条件分岐機能</b><em>「〜のときだけ」を作る</em>
+    <p>「A と B が両方そろったときだけ通す」を、ふたつの信号を足し合わせて作ろうとすると、この脳では片方だけで
+    通ってしまいます。うまくいったのは逆の作り方でした。<strong>通り道にはいつも「通すな」と言い続けている細胞が 1 つ立っていて、
+    信号をふさいでいます。条件がそろうと、その細胞のほうが黙らされます。</strong>ふさいでいたものが消えるので、結果として信号が通る
+    —— これが、この脳で作れた唯一の「〜のときだけ」です。<strong>そろばんの規則は、全部この形で作ってあります。</strong></p></div>
+
+  <div><b>プログラム制御機能</b><em>手順どおりに進める</em>
+    <p>セーブが「いまの状態」、条件分岐が「次へ進む条件」、リセットが「前の状態を消す」。
+    この 3 つを並べると、「A のあと B のあと C」という<strong>手順どおりのときだけ</strong>反応するようになります。
+    そろばんの「置く → 動かす → 確定する」も、この並べ方でできています。</p></div>
+</div>
+
+<h2>そろばんと、ハエの脳の関係</h2>
+
+<p>足せたのは、上の 4 つの機能だけです。<strong>足し算そのものをする回路は作れませんでした。</strong>
+数を受け取って答えを返す装置は、この脳の材料では組めません。</p>
+
+<p>ところがそろばんは、<strong>足し算を「珠の動かし方」に置き換えた道具</strong>です。
+数はどこかに記録されているのではなく、珠がどこにあるかがそのまま数。計算も、
+「こういう並びのときは、この珠をこう動かす」という決まりごとの積み重ねでしかありません。</p>
+
+<p>つまりそろばんが必要とするのは、<strong>値を覚えておくこと</strong>と、
+<strong>決まりごとどおりに動かすこと</strong>だけです。これは、足した 4 つの機能でちょうどまかなえます。
+珠 1 個が「セーブ＆ループ」1 つ、決まりごと 1 つが「条件分岐」1 つ、払うのが「リセット」、
+その進め方が「プログラム制御」。</p>
+
+<p>だから、ハエの脳の上に<strong>そろばんを作りました</strong>。足し算ができない材料でも、
+そろばんの形にすれば計算ができます。画面で蠅が弾いている珠の 1 個 1 個が、
+脳に足したニューロンのかたまりです。</p>
+
+<h2>学習（ドーパミン）はどこで効いているか</h2>
+
+<p>ハエの脳には、匂いを覚えるための<strong>学習装置</strong>（キノコ体）がもともと付いています。その学習は、
+答えを教える代わりに<strong>ドーパミンを流す</strong>やり方です。まずハエに答えさせ、間違えたときだけ、
+絵を見せたままドーパミンを流します。すると<strong>そのとき発火していた結合だけが弱まり</strong>、
+次からその答えを選びにくくなります。</p>
+
+<p>このそろばんでは、学習は<strong>「数字を読むところ」</strong>で使っています。手書きの数字は書く人ごとに形が違うので、
+「こういう形なら 3」という決まりごとでは書けません。そこは<a href="../suji/">数字を読むハエ</a>が
+<strong>11 万回の練習</strong>で身につけたもので、キノコ体の結合の強さとして脳に残っています。
+実際に手書きの数字を見せると、9 割ほどを読みます。</p>
+
+<p>反対に、<strong>読んだ数字を珠に置いてから先は、練習の要らない決まりごと</strong>です。
+「この並びのときはこの珠を動かす」は書き下せるので、覚えさせるのではなく配線しました。
+<strong>規則で書けないものは学習させ、書けるものは回路にする</strong>、という切り分けです。</p>
+
+<p>ちなみに「九九のように答えを丸ごと覚えさせる」ほうも試しました。繰り上がりがあるかどうかはすぐ覚えたのですが、
+<strong>答えの桁のほうは覚えきれません</strong>でした。珠を動かして答えるほうが、正確で速いという結果です。</p>
+
+<p class="note">なお、計算が合ったときに蜜をあげているのは<strong>単なる演出です</strong>。
+ごほうびで学習が進むわけではありません（そろばんの回路に可塑性はありません）。</p>
+
+<h2>画面で起きていること</h2>
+<p>数字を打つと、そのまま珠に置かれます。<strong>2 つめの数は珠に置きません</strong>。= を押した時点で
+1 つめの数はもう盤の上にあるので、ご破算も置き直しもせず、その状態に 2 つめを入れて（または払って）、
+繰り上がりが桁を駆け上がります。答えも盤に残るので、続けて計算するときもそこから始まります。</p>
+<p>珠は<strong>物理で動いています</strong>。棒の上を滑り、梁・枠・隣の珠に当たって止まります。
+上の数字は脳の答えではなく<strong>その珠を読んだもの</strong>なので、蠅が打ち終わるまでは途中の数を示します。</p>
+<p>蠅はサイト共通の NeuroMechFly の体です。珠の位置から<strong>脚の関節の角度を毎回計算して</strong>、
+6 本の脚それぞれの爪先を珠まで届かせています。</p>
+
+<p>棒は 8 本（＋かけ算の回数を数える棒）なので、<strong>この機械は 8 桁です</strong>。
+99999999 に 1 を足すと 00000000 に戻り、0 から 1 を引くと 99999999 になります —— 走行距離計と同じで、
+桁が足りないぶんは上から溢れます。棒を増やせばそのぶん桁は増やせます（横に並べて繋ぐだけです）。</p>
+
+<h2>軽くするために、脳を切り出しています</h2>
+
+<p>脳ぜんたいは 13 万 8,639 ニューロンと 1,635 万本の結合があり、そのまま持ってくると数十メガバイトになります。
+ブラウザで待たされずに動かすために、<strong>重い作業はぜんぶサーバ側で済ませてあります</strong>。</p>
+
+<p>まずサーバで、元の配線にそろばんの回路を足した脳を組み立てて走らせ、答えが正しいことを確かめます。
+そのうえで、<strong>この計算で実際に働いた細胞と、そこへ信号を入れている細胞だけを取り出します</strong>。
+発火しない細胞を消すのは、その細胞を黙らせるのと同じことなので、残りを捨てても結果は変わりません
+（切る前と切った後で答えが一致することを、書き出す前に毎回確かめています）。</p>
+
+<p>こうして<strong>数十メガバイトが 53 キロバイト</strong>になります。ブラウザはこの小さな配線表を読み込んで、
+発火の計算そのものは <strong>WebAssembly</strong> の小さな中身（20 キロバイトほど）で回します。
+おかげでスマホでも、<strong>ハエの実時間より速く</strong>計算が進みます。</p>
+
+<p><a href="./shikumi.html"><strong>しくみの詳しい説明と全測定値 →</strong></a></p>
+</section>
+
+<section data-tab="other">
+<h2>ほかのハエのページ</h2>
+<p class="note" style="line-height:2.2">
+<a href="../">ひらがなを読み書きするハエ</a>　·　
+<a href="../suji/">数字を読むハエ</a>　·　
+<a href="../kakou/">脳に回路を足す（kakou）</a>　·　
+<a href="../kaiwa/">2 匹の会話</a>　·　
+<a href="../shinka/">進化するハエ脳</a>　·　
+<a href="../ningen/">人体を操るハエ脳</a>　·　
+<a href="https://github.com/satorunet/hae">ソースコード（GitHub）</a></p>
+<h2>このページの中身</h2>
+<p class="note"><code>soroban/soroban.mjs</code> そろばんの回路／<code>soroban/bake-soroban.mjs</code> ブラウザ用に焼いて検算／
+<code>soroban/stage.js</code> 3D の盤面と蠅／<code>soroban/soroban-worker.js</code> 脳を走らせるワーカー。
+測定値は <code>soroban/README.md</code>。</p>
+</section>
+
+<nav class="tabbar" aria-label="表示の切り替え">
+  <button data-go="calc" aria-selected="true"><span>🧮</span>そろばん</button>
+  <button data-go="brain" aria-selected="false"><span>🧠</span>脳</button>
+  <button data-go="how" aria-selected="false"><span>📖</span>しくみ</button>
+  <button data-go="other" aria-selected="false"><span>🪰</span>ほか</button>
+</nav>
+
+<footer>
+  コード: <code>soroban/</code>（<a href="https://github.com/satorunet/hae">satorunet/hae</a>、MIT）。
+  モデル: Shiu et al., <i>Nature</i> 2024 (MIT)／配線: FlyWire v783 (CC-BY 4.0)／体: <a href="https://github.com/NeLy-EPFL/flygym">NeuroMechFly v2</a> (Apache-2.0)。
+</footer>
+
+<script>
+  // Browsers hold on to this file, so a new version of the page can sit unseen behind an old one.
+  // This asks the server for it once, and if what comes back is newer than what is running, reloads.
+  (function () {
+    const mine = 116;
+    fetch(location.pathname, { cache: 'reload' }).then((r) => r.text()).then((t) => {
+      const m = t.match(/app\.js\?v=(\d+)/);
+      if (m && +m[1] > mine) location.replace(location.pathname + '?v=' + m[1]);
+    }).catch(() => {});
+  })();
+</script>
+<script type="module" src="./app.js?v=116"></script>
+</body>
+</html>

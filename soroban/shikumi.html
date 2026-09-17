@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ハエにそろばん覚えさせてみた — しくみ</title>
+<meta name="description" content="実在のショウジョウバエのコネクトームに、そろばんを回路として足した記録。五珠と一珠を one-hot のリングで作り、脱抑制ゲートで珠を動かす。3桁の足し算・引き算・かけ算が、桁に関係なく一定時間で動く。">
+<meta name="robots" content="noindex">
+<style>
+  :root{ --bg:#0b0e12; --card:#141a21; --card2:#10151b; --line:#232c36; --ink:#e8eef4; --dim:#8c99a8;
+    --ok:#59b7ff; --warm:#ffb454; --good:#54d98c; --vio:#b69cff; --bad:#ff7b7b; }
+  *{box-sizing:border-box}
+  html{background:var(--bg)}
+  body{margin:0 auto;background:var(--bg);color:var(--ink);font:15px/1.8 system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+    max-width:780px;padding-block:max(14px,env(safe-area-inset-top)) max(48px,env(safe-area-inset-bottom));padding-inline:16px;-webkit-text-size-adjust:100%}
+  a{color:var(--ok)}
+  h1{font-size:1.32rem;line-height:1.35;margin:0 0 6px}
+  h1 small{display:block;font-size:.78rem;font-weight:500;color:var(--dim);margin-top:6px;line-height:1.7}
+  h2{font-size:1.06rem;margin:38px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  h3{font-size:.95rem;margin:24px 0 4px;color:var(--warm)}
+  p{margin:9px 0}
+  ul,ol{margin:9px 0;padding-left:1.3em}
+  li{margin:5px 0}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.86em;background:var(--card2);border:1px solid var(--line);border-radius:5px;padding:0 4px}
+  pre{background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:auto;font-size:.8rem;line-height:1.65}
+  pre code{background:none;border:0;padding:0}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:.84rem}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--dim);font-weight:600}
+  td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .note{font-size:.82rem;color:var(--dim)}
+  .parts div{border-left:2px solid var(--line);padding:1px 0 1px 11px;margin:12px 0}
+  .parts b{color:var(--warm);font-size:.95rem}
+  .parts p{margin:4px 0 0}
+  /* tables: numbers stay on one line and the table scrolls sideways rather than folding */
+  .wide{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:12px 0}
+  .wide table{margin:0;min-width:100%}
+  td.n,th.n{white-space:nowrap}
+  .wide th{white-space:nowrap}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:16px 0}
+  .bad{color:var(--bad)} .good{color:var(--good)} .warm{color:var(--warm)}
+  .lead{font-size:1rem;line-height:1.8}
+  footer{margin-top:48px;font-size:.82rem;color:var(--dim);border-top:1px solid var(--line);padding-top:14px}
+</style>
+</head>
+<body>
+
+<p class="note" style="margin-bottom:18px"><a href="./">← そろばんを動かす</a></p>
+
+<h1>ハエにそろばん覚えさせてみた — しくみ
+  <small>実在のショウジョウバエのコネクトーム（FlyWire v783、13.8 万ニューロン）に、<strong>そろばん</strong>を回路として足した記録です。
+  珠は one-hot のリング、珠を動かす規則は脱抑制ゲート。元の脳の挙動は 1 スパイクも変わりません。</small></h1>
+
+<p class="lead">ハエは 0.5 秒を覚えていられません。味が消えて 50 ms 後には脳全体が沈黙し、13.8 万個のうち発火しているニューロンは 0 個になります。
+<a href="../kakou/">kakou</a> で作った 4 つの部品 —— 保持する輪・消す抑制・脱抑制ゲート・状態機械 —— を組み直して、そこに<strong>そろばん</strong>を入れました。</p>
+
+<h2>土台 —— ハエ脳に回路を足す（<a href="../kakou/">kakou</a>）</h2>
+
+<p>そろばんの部品は全部、<a href="../kakou/">kakou</a> で 1 つずつ測って作ったものです。ここを踏まえていないと、
+以下の設計が「なぜそういう形なのか」が分かりません。</p>
+
+<h3>足し方：グラフを生やす</h3>
+<p>脳は FlyWire v783 のコネクトーム（13.8 万ニューロン・1,635 万結合）を Shiu et al. の全脳 LIF モデルで走らせたものです。
+配線表には空きがないので、<a href="../shinka/">進化</a>のほうは新しい結合を作るのに既存の結合を 1 本潰さなければなりません。
+工作のほうにはその制約が無いので、<code>kakou/graft.mjs</code> は<strong>グラフ自体を生やします</strong> ——
+新しいニューロンを末尾に足し、これから送り先が増える行にだけ空きスロットを足す。<strong>既存の結合は 1 本も触りません</strong>。
+何も繋がない状態なら、元のコネクトームと<strong>スパイク 1 発まで同一</strong>です（砂糖の実験、種 1〜3 で 138,639 個中 0 個が相違）。</p>
+
+<h3>部品 1：保持する輪 —— この脳は 50 ms しか保たない</h3>
+<p>200 ms の砂糖を与えて、止めたあとを 10 ms ごとに見ると：</p>
+<div class="wide">
+<table>
+<tr><th>味が消えてから</th><th class="n">0</th><th class="n">10</th><th class="n">20</th><th class="n">30</th><th class="n">40</th><th class="n">50</th><th class="n">60 ms 以降</th></tr>
+<tr><td>10 ms あたりの発火</td><td class="n">81.3</td><td class="n">46.0</td><td class="n">24.9</td><td class="n">14.8</td><td class="n">9.4</td><td class="n">0.8</td><td class="n bad">0</td></tr>
+<tr><td>砂糖か苦味かの判別（偶然 0.5）</td><td class="n">0.96</td><td class="n">0.88</td><td class="n">0.75</td><td class="n">0.75</td><td class="n">0.67</td><td class="n bad">0.50</td><td class="n bad">0.50</td></tr>
+</table>
+</div>
+<p><strong>刺激が消えて 50 ms で脳全体が沈黙し、何だったかも消えます。</strong>作業記憶がないので、
+さっき見たものについて何かする、ということができません。</p>
+
+<p>そこで新しい細胞 32 個を足して自己興奮させる —— のですが、<strong>全結合ではどんな強さでも保ちません</strong>。
+全部が同時に発火するので、互いに送った発射が<strong>不応期</strong>に着いてしまい、この模型はそれを捨てるからです
+（Brian2 の生成コードをそのまま再現した挙動）。</p>
+<div class="wide">
+<table>
+<tr><th>輪の群数</th><th class="n">1（全結合）</th><th class="n">2</th><th class="n">3</th><th class="n">4</th><th class="n">8</th></tr>
+<tr><td>味が消えたあと保った時間</td><td class="n bad">25 ms</td><td class="n good">&gt; 10 秒</td><td class="n good">&gt; 10 秒</td><td class="n good">&gt; 10 秒</td><td class="n bad">25 ms</td></tr>
+</table>
+</div>
+<p>細胞を群に分けて<strong>隣の群だけを励起する輪</strong>にすると、活動が回りながら進むので各群は不応期の外で押され、
+10 秒後も同じ調子（1 細胞あたり約 108 Hz）で回り続けます。<strong>そろばんの珠 1 個 1 個がこの輪です。</strong></p>
+
+<h3>部品 2：消す</h3>
+<p>輪は止まらないので、そのままでは記憶ではなく<strong>ラッチ</strong>です。別の入力から<strong>抑制</strong>を入れて消します。</p>
+<div class="wide">
+<table>
+<tr><th>抑制シナプス</th><th class="n">書く</th><th class="n">保つ</th><th class="n">消す</th><th class="n">その後 1.5 秒</th><th class="n">書き直す</th></tr>
+<tr><td>16〜64</td><td class="n">1,040</td><td class="n">1,744</td><td class="n good">0</td><td class="n good">0</td><td class="n good">1,072（全開）</td></tr>
+<tr><td>128</td><td class="n">1,024</td><td class="n">1,728</td><td class="n">0</td><td class="n">0</td><td class="n bad">80（戻らない）</td></tr>
+</table>
+</div>
+<p>16〜64 シナプスなら完全に消えて、また書ける。強すぎると抑制が消去より長く効いて<strong>二度と立ち上がりません</strong>。
+そろばんの「珠を書き換える」はこれで、<strong>32</strong> を使っています。</p>
+
+<h3>部品 3：脱抑制ゲート —— AND の作り方</h3>
+<p>「A と B が両方あるとき」を作ろうとして、2 つの弱い興奮を足すやり方は<strong>使えません</strong>。
+いちばん弱い 2 シナプスでも、24 個の駆動細胞が約 198 Hz で入ると、膜時定数 20 ms が均してしまい単独で発火します
+（閾値下に置ける領域が無い）。<strong>強く駆動されたゲートへの拒否も効きません</strong> ——
+抑制も不応期に着けば捨てられるので、飽和したゲートは 128 シナプス × 8 細胞の拒否を無視します（692 発 vs 708 発）。</p>
+<p>効くのは<strong>「かろうじて駆動されているゲートへの脱抑制」</strong>です：</p>
+<pre><code>go --(弱く)------→ ゲート --→ 出力
+go --(強く)--→ 拒否 --(-128)--→ ゲート
+記憶 --(-128)--→ 拒否</code></pre>
+<div class="wide">
+<table>
+<tr><th class="n">go→ゲート</th><th class="n">拒否の発火（正/誤）</th><th class="n">ゲート（正/誤）</th><th class="n">出力 MN9（正/誤）</th></tr>
+<tr><td class="n">2</td><td class="n">0 / 332</td><td class="n">80 / 0</td><td class="n">5.0 / 0.0</td></tr>
+<tr><td class="n">8</td><td class="n">0 / 332</td><td class="n">292 / 0</td><td class="n good">18.0 / 0.0</td></tr>
+<tr><td class="n">16</td><td class="n">0 / 332</td><td class="n">416 / 0</td><td class="n good">25.5 / 0.0</td></tr>
+<tr><td class="n">32</td><td class="n">0 / 332</td><td class="n">540 / 452</td><td class="n bad">33.5 / 28.0（漏れる）</td></tr>
+</table>
+</div>
+<p>記憶が拒否細胞を<strong>完全に黙らせて（332 → 0）</strong>、そのときだけ go が通ります。
+間隔を 0・500・2,000・5,000・10,000 ms と空けても答えは同じ（18.0 / 0.0）—— 輪が減衰しないからです。
+<strong>そろばんの「いまの珠の並びと足す数で規則が決まる」は、全部この形のゲートです。</strong></p>
+
+<h3>部品 4：状態機械</h3>
+<p>輪＝状態、脱抑制ゲート＝遷移、抑制＝状態の消去。これを 4 つ並べると、
+<strong>A のあと B のあと C</strong> にだけ反応してほかには反応しない機械になります（20 通りのテストで 20 通り正解、
+細胞 200 個・7,648 結合・348,672 シナプス）。順序はハエがやることではありませんし、
+状態機械は進化が差し出してくるものでもありません。<strong>そろばんのマスター・スレーブも繰り上げの鎖も、この組み方の延長です。</strong></p>
+
+<h3>そして、動物は何も損をしない</h3>
+<p>作った回路を全部載せた状態で、元のコネクトームと 1 秒走らせた比較：</p>
+<div class="wide">
+<table>
+<tr><th></th><th class="n">挙動の違うニューロン</th><th class="n">総発火数</th><th class="n">MN9</th></tr>
+<tr><td>砂糖</td><td class="n good">0 / 138,639</td><td class="n">12,794 vs 12,794</td><td class="n">78 vs 78</td></tr>
+<tr><td>苦味</td><td class="n good">0 / 138,639</td><td class="n">4,197 vs 4,197</td><td class="n">0 vs 0</td></tr>
+<tr><td>無刺激</td><td class="n good">0 / 138,639</td><td class="n">0 vs 0</td><td class="n">0 vs 0</td></tr>
+</table>
+</div>
+<p>ハエは今までどおり食べ、そのうえで、もうそこに無いものについて答えられる（そして、そろばんが打てる）ようになります。</p>
+
+<h2>なぜ、この脳とそろばんは相性が良かったのか</h2>
+
+<p>足せる部品は、上の 4 つ（セーブ＆ループ・リセット・条件分岐・プログラム制御）だけです。
+計算機を作ろうとすると、ふつうは足し算そのものをする回路が要りますが、そういうものは作れません。
+そろばんが具合が良かったのは、<strong>そろばんに必要なものが、ちょうどこの 4 つと一対一で対応していた</strong>からです。</p>
+
+<p>まずそろばんの中身です。1 桁には梁の上に珠が 1 個、下に 4 個あります。梁に寄せた珠だけが数に入り、上の珠が 5、
+下の珠が 1 個につき 1。3 に 4 を足すなら、下の珠は 1 個しか空いていないので<strong>上の珠を下ろして下の珠を 1 個下げます</strong>
+（5 足して 1 引けば 4）。8 に 7 なら上の珠も使えないので<strong>隣の桁に 1 を渡して、この桁から 3 を引きます</strong>
+（10 足して 3 引けば 7）。この仕組みは、次の 4 点で足した回路と噛み合いました。</p>
+
+<div class="parts">
+  <div><b>数を「計算」せず、「位置」で持っている</b>
+    <p>そろばんは数値をどこかで足し合わせているのではなく、<strong>珠がどこにあるか</strong>がそのまま数です。
+    足した回路が作れる記憶は「ひとつの状態を保ち続ける」もので、数値を蓄えて演算する装置ではありません。
+    珠 1 個をセーブ＆ループ 1 本に割り当てれば、それで数が持てます。<strong>足し算の回路が要らないのです。</strong></p></div>
+
+  <div><b>規則が「いまの並び＋足す数 → 動かす珠」の形をしている</b>
+    <p>そろばんの規則は 3 つだけで、どれも「こういう並びのときはこの珠を動かす」という言い方でできています。
+    これは<strong>条件分岐そのもの</strong>です。この脳で唯一作れた「〜のときだけ」を、規則の数だけ並べれば 1 桁ぶんができます。
+    逆に、桁上げを式で解くような作り方だったら、部品が足りませんでした。</p></div>
+
+  <div><b>手数が少ない</b>
+    <p>足した回路はどれも速くありません。信号が回って状態が立ち上がるまでに、それなりの時間がかかります。
+    だから<strong>手数の多いやり方は、そのぶん丸ごと遅くなります</strong>。
+    そろばんはいくつを足しても一手で、しかも全部の桁が同時に動けます。遅い部品で作るほど、この差が効いてきます。</p></div>
+
+  <div><b>桁どうしのやりとりが 1 本で済む</b>
+    <p>桁と桁のあいだで伝わるのは「<strong>隣に 1 を渡す</strong>」だけです。渡された側では、それがそのまま
+    条件分岐のスイッチになります。配線が 1 本で済むので、桁を増やしたいときは同じものを横に並べて繋ぐだけです。</p></div>
+</div>
+
+<p>手順のほうもそのままです。「払う → 置く → 動かす → 確定する」という進め方は、
+そろばんを人が使うときの手順であると同時に、<strong>プログラム制御機能</strong>（状態を並べて順に進める仕掛け）が
+いちばん得意な形でもありました。おまけに、途中経過が<strong>珠の位置としてそのまま外から見えます</strong> ——
+画面の数字は脳が出した答えではなく、その珠を読んだものです。</p>
+
+<p>引き算は同じ珠を逆に動かすだけ、かけ算は「あと何回足すか」を数える棒をもう 1 本足して、それが 0 になるまで足し続けます。
+どちらも新しい部品は要りませんでした。</p>
+
+<h2>測ったもの</h2>
+
+<div class="wide">
+<table>
+<tr><th>式</th><th class="n">そろばん</th><th>式</th><th class="n">そろばん</th></tr>
+<tr><td>12+34</td><td class="n good">046</td><td>500−321</td><td class="n good">179</td></tr>
+<tr><td>99+1</td><td class="n good">100</td><td>12−30</td><td class="n good">982（10 の補数）</td></tr>
+<tr><td>777+345</td><td class="n good">122</td><td>100−1</td><td class="n good">099</td></tr>
+<tr><td>908+92</td><td class="n good">000（桁あふれ）</td><td>7×8</td><td class="n good">056</td></tr>
+<tr><td>9+9</td><td class="n good">018</td><td>999×9</td><td class="n good">991</td></tr>
+</table>
+</div>
+<p class="note">3 桁＋ループ桁、15,520 細胞。ランダムな 3 桁どうし 16 問も全問正解で、どれも<strong>ハエの時間で同じ長さ</strong>でした。</p>
+
+<h3>速くした 3 か所</h3>
+<div class="wide">
+<table>
+<tr><th></th><th>前</th><th>後</th></tr>
+<tr><td>最初の数</td><td>足し算で作る（7 相）</td><td class="good">珠に直接「置く」1 相 —— 人がやるのと同じ</td></tr>
+<tr><td>オペランドの読み込み</td><td>棒ごとに 4 相</td><td class="good">4 本同時に 1 相（別の細胞なので待つ必要がない）</td></tr>
+<tr><td>繰り上げ</td><td>毎回まわす</td><td class="good">繰り上がった桁があるときだけ（機械が自分で申告する）</td></tr>
+</table>
+</div>
+<p class="note">結果、1 計算あたりハエの時間で 3.9 秒 → <strong>1.0〜1.6 秒</strong>。999×9 は 36 秒 → 19.9 秒。</p>
+
+<h2>途中で分かったこと</h2>
+
+<h3>1 パルスでカウンタが暴走する</h3>
+<p>輪から輪へゲートを直接つなぐと、200 ms のパルス 1 回で数字が 1 ではなく <b class="bad">4</b> 進みます。
+k+1 が立った瞬間、同じパルスがもう k+1 のゲートの前に立っているからです。だから<strong>マスター・スレーブ</strong>にしました
+（tick で影に書き、tock で影を数字に写す。<strong>書いた相で誰も読まない</strong>）。これで 40 回連続正しく数えます。</p>
+
+<h3>輪は強く書きすぎると死ぬ</h3>
+<p>kakou の既定値（60 シナプス）で書くと、輪は書いた瞬間に止まります。グラフ 1 の失敗が玄関から入ってきた形で、
+<strong>全細胞が同時に発火するほど強く書くと、輪が互いに送る発射は不応期に着いて、この模型はそれを捨てます</strong>。
+2 群・16 シナプスの輪なら 4〜32 で持続、60 で不安定。16 細胞のゲートから書く実機では 24 でもう壊れます（40 回中 5 回しか数えない）。
+この計算機は全部 <strong>16</strong> で書いています。</p>
+
+<h3>消した直後のリングには書き込めない</h3>
+<p>clear の直後に次の tick を始めると、影のリングが 16 発だけ光って消えます。抑制から回復するのに数十 ms かかるためで、
+<strong>60 ms の隙間</strong>を入れて直しました（数える機械が無事だったのは、読み取りの 50 ms がたまたまその隙間になっていたから）。</p>
+
+<h3>繰り上がりの鎖は、数の桁で止めなければならない</h3>
+<p>かけ算用の「回数を数える棒」まで繰り上がりの鎖を伸ばしていたため、<code>999×9</code> のように桁あふれする計算で
+<strong>残り回数が 1 増えて</strong>いました。鎖を 3 桁で止めるだけの 1 行の修正です。桁あふれしない <code>7×8</code> では起きないので、
+大きい数のかけ算だけ合わない、という壊れ方をします。</p>
+
+<h3>新しい細胞の枠から溢れると、隣の細胞が書き換わる</h3>
+<p>新しい細胞に確保した枠より多くの結合を配ると、CSR の行からはみ出して<strong>隣の細胞を静かに配線し直していました</strong>。
+2 桁目が 1 桁目と一緒に数え始めて、配線図のどこにも理由が見えない、という壊れ方です。
+<code>kakou/graft.mjs</code> は、必要なだけ枠を与え、行をはみ出したら例外を投げるようにしてあります。</p>
+
+<h2>元のハエは変わらない</h2>
+
+<div class="wide">
+<table>
+<tr><th></th><th class="n">挙動の違うニューロン</th><th class="n">総発火数（元 vs 改造）</th><th class="n">MN9</th></tr>
+<tr><td>砂糖</td><td class="n good">0 / 138,639</td><td class="n">12,360 vs 12,360</td><td class="n">75 vs 75</td></tr>
+<tr><td>苦味</td><td class="n good">0 / 138,639</td><td class="n">4,222 vs 4,222</td><td class="n">0 vs 0</td></tr>
+<tr><td>無刺激</td><td class="n good">0 / 138,639</td><td class="n">0 vs 0</td><td class="n">0 vs 0</td></tr>
+</table>
+</div>
+<p class="note">計算機は時計が鳴るまで沈黙しています（数える機械での測定。そろばんも同じ作り方です）。</p>
+
+<h2>ブラウザで動いているもの</h2>
+
+<p>ページが読み込む脳は <strong>53 KB</strong> です。加工した脳（15.4 万ニューロン・1,635 万結合）から、
+<strong>そろばんの回路と、それがつながっている 216 個の感覚細胞だけ</strong>を切り出しました。
+発火しないニューロンを消すのは黙らせるのと同じこと、という <a href="../kakou/">kakou</a> の手で、
+切る前と切った後で答えが変わらないことを確かめてから書き出しています（<code>soroban/bake-soroban.mjs</code>）。</p>
+
+<div class="wide">
+<table>
+<tr><td>切り出した脳</td><td class="n">15,736 ニューロン・1,099,575 結合・<strong>53 KB</strong>（wasm 18.9 MB）</td></tr>
+<tr><td>検算</td><td class="n">＋ − × 10 問すべて全脳版と一致</td></tr>
+<tr><td>速さ</td><td class="n">実時間の 8 倍速（足し算 1 回がハエの時間 1.1 秒、実時間 0.15 秒）</td></tr>
+</table>
+</div>
+
+<p>画面のそろばんは<strong>物理で動いています</strong>。珠は位置と速度を持って棒の上を滑り、梁・枠・隣の珠に当たって止まります。
+止まる場所（梁上 1.65、珠間隔 2.72、下枠 −15.85）は珠の高さと梁の厚みから計算した値で、目標値もそこから作っているので、
+<strong>弾かれた珠はぶつかって止まった結果として正しい位置に収まります</strong>。上に出ている数字はその珠から読んだものです。</p>
+
+<p>珠を打っている蠅は、サイト共通の <a href="https://github.com/NeLy-EPFL/flygym">NeuroMechFly</a> の体です。
+6 本の脚それぞれについて<strong>逆運動学</strong>を毎フレーム解いて爪先を珠に届かせ、どの脚が行くかは
+「その脚の足が普段ついている位置にいちばん近い珠」で決めています。頭の 3 軸関節で打つ珠を目で追い、
+脚が動いているあいだだけ翅が唸り（flygym のストローク運動学、1 秒 34 打）、
+正解すると口吻（吻と口針の関節）を伸ばして蜜を飲みます。</p>
+
+<h2>もうひとつの実験 —— 数字をハエに読ませる</h2>
+
+<p><a href="../suji/">/suji/</a> には、手書き数字を読むハエがいます。絵は匂いの入口から入り、キノコ体が疎な符号にして、
+11 万回の練習で MNIST のテスト数字を 89.6% 当てるようになりました。そのハエは、数字を読んでも<strong>何もできませんでした</strong>。
+50 ms 後には脳が空になるからです。</p>
+
+<p>その同じ脳に計算機を入れて試してあります（<code>soroban/yomu.mjs</code>。この実験だけは、先に作った
+「1 ずつ数える」ほうの計算機を使っています）。</p>
+
+<div class="wide">
+<table>
+<tr><td>絵ごとに脳をリセット（/suji/ の走らせ方）</td><td class="n">92.2%</td></tr>
+<tr><td>一度もリセットせず、レジスタが数字を持ち続けたまま</td><td class="n good">90.0%</td></tr>
+<tr><td>2 桁どうしの足し算 12 題：数字を正しく読めた</td><td class="n">44 / 48（91.7%）</td></tr>
+<tr><td>最後まで正解</td><td class="n">8 / 12</td></tr>
+<tr><td>全桁を正しく読めた問題</td><td class="n good">8 問、うち計算が正しかったのは 8 問</td></tr>
+</table>
+</div>
+
+<p><strong>間違いは全部、数字の読み間違いでした。</strong>23+15 を 73+15 と読んだハエは、きちんと 88 と答えています。
+計算そのものは一度も間違えていません。</p>
+
+<p class="note">ただし「この絵はどの数字か」の判定だけは脳の外の算術です（どの区画の MBON が一番駆動されないか）。
+ニューロンではできませんでした：テスト 40 枚で、駆動の規則は 38 枚正解、<b class="bad">一番発火が少ない区画</b>という規則は 2 枚しか当たりません。</p>
+
+<h2>覚えさせる方は、うまくいっていない</h2>
+
+<p>「数えるのをやめて九九のように覚えさせれば速いのでは」を試しました（<code>soroban/hyou.mjs</code>）。
+キノコ体に <code>a + b + 繰り上がり → 桁と繰り上がり</code> の 200 通りを練習させたものです。</p>
+
+<div class="wide">
+<table>
+<tr><th>練習回数</th><th class="n">繰り上がり</th><th class="n">答えの桁</th></tr>
+<tr><td>0</td><td class="n">50.0%</td><td class="n">10.0%</td></tr>
+<tr><td>200</td><td class="n">87.0%</td><td class="n">12.5%</td></tr>
+<tr><td>1,200</td><td class="n good">83.0%</td><td class="n bad">38.0%</td></tr>
+<tr><td>1,600</td><td class="n bad">53.0%</td><td class="n bad">38.0%</td></tr>
+</table>
+</div>
+
+<p><strong>繰り上がりはすぐ覚えるのに、桁の数字は 38% で頭打ちになり、そこから崩れます。</strong>
+理由ははっきりしていて、キノコ体の符号が入力チャンネルの「足し算」になっているためです。
+繰り上がりは a+b がしきい値を超えるかどうかなので線形に分けられますが、<code>mod 10</code> は a と b の<strong>組み合わせ</strong>が必要で、
+線形には分けられません。<strong>数えて答える機械のほうが正確で速い</strong>、というのが今のところの結論です。</p>
+
+<h2>走らせる</h2>
+<pre><code>git clone https://github.com/satorunet/hae
+cd hae
+
+node soroban/soroban.mjs             # そろばん：足し算・引き算
+node soroban/bake-soroban.mjs        # ページが読む 53 KB の脳を焼いて検算する
+
+node soroban/digit.mjs               # 数える機械：1 桁、9 まで数えて繰り上がる
+node soroban/digit.mjs oneshot=1     # スレーブ層が無いとどうなるか
+node soroban/write.mjs               # 輪はどれだけ強く書けるか
+node soroban/add.mjs fidelity=1      # 3 桁の足し算と、元のハエへの影響
+node soroban/keisan.mjs              # 足し算・引き算・かけ算
+node soroban/yomu.mjs control=1 n=12 # 数字をハエ自身に絵から読ませる
+node soroban/hyou.mjs                # 表として覚えさせる（うまくいかない方）</code></pre>
+
+<footer>
+  コード: <code>soroban/</code>（<a href="https://github.com/satorunet/hae">satorunet/hae</a>、MIT）。全測定値は <code>soroban/README.md</code>。
+  モデル: Shiu et al., <i>Nature</i> 2024 (MIT)／配線: FlyWire v783 (CC-BY 4.0)／体: <a href="https://github.com/NeLy-EPFL/flygym">NeuroMechFly v2</a> (Apache-2.0)／数字: MNIST (CC BY-SA 3.0)。
+  関連: <a href="../kakou/">脳に回路を足す</a>・<a href="../suji/">数字を読むハエ</a>・<a href="../kaiwa/">2 匹の会話</a>・<a href="../">ひらがなを読むハエ</a>
+</footer>
+</body>
+</html>
