@@ -417,7 +417,7 @@
 <h2>そろばんの土台になったもの</h2>
 <ul class="libs">
   <li><a href="../kakou/">kakou — 脳に回路を足す</a><small>輪・消去・脱抑制ゲート・状態機械。この四つだけでそろばんを組んだ</small></li>
-  <li><a href="../kakou/graft.mjs"><code>kakou/graft.mjs</code></a><small>コネクトームに細胞を足す工房。元の配線は 1 本も変えない（このサーバ上のソース）</small></li>
+  <li><a href="https://github.com/satorunet/hae/blob/main/kakou/graft.mjs"><code>kakou/graft.mjs</code></a><small>コネクトームに細胞を足す工房。元の配線は 1 本も変えない</small></li>
   <li><a href="https://github.com/satorunet/hae/blob/main/flybrain/src/brain.c"><code>flybrain/</code>（wasm）</a><small>13.8 万ニューロンの LIF を回す本体。ブラウザで動いているのはこれ</small></li>
   <li><a href="./shikumi.html">しくみ（詳細）</a><small>珠の符号化、繰り上がり、追加したニューロン群の全表</small></li>
 </ul>
@@ -458,13 +458,13 @@
   // Browsers hold on to this file, so a new version of the page can sit unseen behind an old one.
   // This asks the server for it once, and if what comes back is newer than what is running, reloads.
   (function () {
-    const mine = 117;
+    const mine = 118;
     fetch(location.pathname, { cache: 'reload' }).then((r) => r.text()).then((t) => {
       const m = t.match(/app\.js\?v=(\d+)/);
       if (m && +m[1] > mine) location.replace(location.pathname + '?v=' + m[1]);
     }).catch(() => {});
   })();
 </script>
-<script type="module" src="./app.js?v=117"></script>
+<script type="module" src="./app.js?v=118"></script>
 </body>
 </html>

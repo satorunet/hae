@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>kakou — ハエ脳に回路を足す</title>
+<meta name="description" content="実在のハエのコネクトームで動く脳に、自分で設計した回路を足すためのライブラリ。作業記憶・ANDゲート・状態機械・新しい感覚入力が、既存の挙動を1スパイクも変えずに入る。777KBで学習する最小AIとしても使える。">
+<meta name="robots" content="noindex">
+<style>
+  :root{ --bg:#0b0e12; --card:#141a21; --card2:#10151b; --line:#232c36; --ink:#e8eef4; --dim:#8c99a8;
+    --ok:#59b7ff; --warm:#ffb454; --good:#54d98c; --vio:#b69cff; --bad:#ff7b7b; }
+  *{box-sizing:border-box}
+  html{background:var(--bg)}
+  body{margin:0 auto;background:var(--bg);color:var(--ink);font:15px/1.8 system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+    max-width:780px;padding-block:max(14px,env(safe-area-inset-top)) max(48px,env(safe-area-inset-bottom));padding-inline:16px;-webkit-text-size-adjust:100%}
+  a{color:var(--ok)}
+  h1{font-size:1.32rem;line-height:1.35;margin:0 0 6px}
+  h1 small{display:block;font-size:.78rem;font-weight:500;color:var(--dim);margin-top:6px;line-height:1.7}
+  h2{font-size:1.06rem;margin:38px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  h3{font-size:.95rem;margin:24px 0 4px;color:var(--warm)}
+  p{margin:9px 0}
+  ul,ol{margin:9px 0;padding-left:1.3em}
+  li{margin:5px 0}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.86em;background:var(--card2);border:1px solid var(--line);border-radius:5px;padding:0 4px}
+  pre{background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:auto;font-size:.8rem;line-height:1.65}
+  pre code{background:none;border:0;padding:0}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:.84rem}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--dim);font-weight:600}
+  td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .note{font-size:.82rem;color:var(--dim)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:16px 0}
+  .bad{color:var(--bad)} .good{color:var(--good)} .warm{color:var(--warm)}
+  .lead{font-size:1rem;line-height:1.8}
+  footer{margin-top:48px;font-size:.82rem;color:var(--dim);border-top:1px solid var(--line);padding-top:14px}
+</style>
+</head>
+<body>
+
+<h1>kakou — ハエ脳に回路を足す
+  <small>実在のショウジョウバエのコネクトーム（FlyWire v783、13.8 万ニューロン）で動く脳に、<strong>自分で設計した回路を足す</strong>ためのライブラリ。
+  作業記憶・AND ゲート・状態機械・新しい感覚入力が、<strong>元の挙動を 1 スパイクも変えずに</strong>入ります。</small></h1>
+
+<p class="lead">できることは 2 つです。<br>
+<strong>1.</strong> 777 KB で学習する最小の AI として使う。<br>
+<strong>2.</strong> その脳に、脳が持っていない機能を回路として足す。</p>
+
+<h2>1. 最小 AI として</h2>
+
+<p>ハエの記憶中枢（キノコ体）だけを切り出した一式が、そのまま学習器です。</p>
+
+<table>
+<tr><th>部品</th><th class="n">サイズ</th><th>中身</th></tr>
+<tr><td><code>flybrain.wasm</code></td><td class="n good">18.8 KB</td><td>積分・発火・可塑性まで込みのコア</td></tr>
+<tr><td><code>flybrain.js</code></td><td class="n">19.4 KB</td><td>API</td></tr>
+<tr><td><code>mb783.fbg.gz</code></td><td class="n">739 KB</td><td>6,293 細胞・570,682 結合</td></tr>
+<tr><td><strong>合計</strong></td><td class="n good"><strong>777 KB</strong></td><td>ブラウザでも Node でも動く</td></tr>
+</table>
+
+<h3>性能</h3>
+<table>
+<tr><td>手書き 46 文字（ひらがな）の識別</td><td class="n good">84.35%</td><td class="note">未学習の 5 書体で。偶然は 2.2%</td></tr>
+<tr><td>学習可能なパラメータ</td><td class="n good">62,261</td><td class="note">キノコ体細胞 → MBON のシナプス利得だけ</td></tr>
+<tr><td>学習済みモデルのサイズ</td><td class="n good">133 KB</td><td class="note">Float32 の重み一式</td></tr>
+<tr><td>1 枚の提示（400 ms 相当）</td><td class="n">128 ms</td><td class="note">実時間の 3 倍速</td></tr>
+<tr><td>全脳（13.8 万細胞）を使う場合</td><td class="n">実時間の 15 倍速</td><td class="note">1 シミュレート秒が 68 ms、wasm ヒープ 116 MB</td></tr>
+</table>
+
+<h3>普通の機械学習と違うところ</h3>
+<ul>
+<li><strong>誤差逆伝播がない。</strong> 規則は局所的で、「そのシナプスの入力側が最近発火した」×「その区画にドーパミンが来た」の一致だけで重みが動きます。勾配も最適化器も不要。</li>
+<li><strong>オンラインで 1 枚ずつ。</strong> バッチもエポックもありません。先に答えさせ、間違えたときだけ、絵がまだ出ているうちに教える。</li>
+<li><strong>学習が wasm の中で完結。</strong> 外で計算するのは最後の比較だけ。</li>
+<li><strong>重みを持ち運べる。</strong> <code>exportGains()</code> / <code>importGains()</code> で 133 KB のファイルにして別の個体へ。</li>
+</ul>
+<p class="note">同じ課題なら小さな CNN のほうが少ないパラメータで高精度が出ます。ここの取り柄は精度ではなく、
+<strong>局所規則だけで・オンラインで・777 KB の中で完結し、その土台を回路として拡張できる</strong>ことです。</p>
+
+<h3>使う</h3>
+<pre><code>import { FlyBrain } from 'https://hae.satoru.net/flybrain/flybrain.js';
+
+const brain = await FlyBrain.load({ graph: '.../data/mb783.fbg.gz' });
+
+// 何を学習させるか：入力の集団、出力の区画（クラスごとに1つ）
+brain.setPlasticity({
+  pre: kenyonCells,
+  groups: labels.map((_, i) =&gt; ({ post: mbonsOf(i), modulators: [] })),
+  eta: 6e-5, tauTrace: 40, gainMin: 0.05, gainMax: 2,
+});
+
+// 1枚見せる
+for (let i = 0; i &lt; pixels.length; i++)
+  if (img[i] &gt; 0.05) brain.stimulate(channel[i], 270 * img[i], { byIndex: true });
+brain.reset(seed);
+brain.run(400);
+
+// 答え＝いちばん駆動が小さい区画
+const drive = brain.driveByGroup(kenyonCells, spikeCounts);
+const answer = drive.indexOf(Math.min(...drive));
+
+// 間違えたときだけ教える（絵は出したまま）
+if (answer !== truth) {
+  brain.dopamine(truth, 1);       // 正解の区画を弱める
+  brain.dopamine(answer, -1);     // 選んでしまった区画を強める
+  brain.run(300);
+}</code></pre>
+
+<h2>2. 回路を足す</h2>
+
+<p>ハエの脳が持っていない機能を、<strong>設計して挿せます</strong>。進化と違って既存の結合を奪う必要はありません
+（<code>graft.mjs</code> がグラフ自体を拡張し、新しく送り先ができた行にだけ空きスロットを足します）。</p>
+
+<div class="card">
+<p style="margin:0"><strong>足しても元の脳は変わりません。</strong> 以下のどの回路を入れても、砂糖・苦味・無刺激での挙動は
+<span class="good">138,639 細胞すべてでスパイク単位一致</span>、運動ニューロン MN9 も 78 対 78 で同じ。
+新しい回路は、それが働く場面でだけ動きます。</p>
+</div>
+
+<h3>API は 5 つだけ</h3>
+<pre><code>import { Workshop } from './kakou/graft.mjs';
+
+const W = await Workshop.open({ cells: 200 });   // 新しいニューロンを確保
+const state = W.cells(32);                       // 使う分だけ取り出す
+W.wire(from, to, 12);                            // 集団→集団（負の値で抑制性）
+W.link(pre, post, 12);                           // 1本だけ
+const brain = await W.build();                   // 全部入りの FlyBrain</code></pre>
+
+<h2>部品カタログ</h2>
+<p>動くことを実測した部品です。数値はそのまま使えます。</p>
+
+<h3>記憶</h3>
+<p>素のハエ脳は、<strong>刺激が消えて 50 ms で全脳が沈黙し、何だったかを失います。</strong>保持の仕組みがありません。足します。</p>
+<pre><code>const seen = W.memory();        // 32細胞。書かれたら保持しつづける
+seen.write(sugarCells);         // これで書き込まれ
+seen.clear(bitterCells);        // これで消える
+
+W.wire(seen, gate, 8);          // ただの細胞の配列なので、そのまま繋げる</code></pre>
+<table>
+<tr><td>書込（砂糖 200 ms）</td><td class="n">1,040 スパイク</td></tr>
+<tr><td>保持（5 秒）</td><td class="n good">17,056</td><td class="note">減衰なし。1 細胞あたり約 108 Hz</td></tr>
+<tr><td>消去（苦味 200 ms）</td><td class="n good">16 → 0</td></tr>
+<tr><td>そのまま 2 秒</td><td class="n">0</td><td class="note">戻ってこない</td></tr>
+<tr><td>再書込</td><td class="n">1,088</td></tr>
+<tr><td>また保持（5 秒）</td><td class="n good">17,024</td><td class="note">満額</td></tr>
+</table>
+<p class="note"><code>W.memory(n, { groups, rec, write, clear })</code> で細かく変えられます。既定は 32 細胞・2 群・1 対 16 シナプス。
+中身は<strong>輪</strong>です——全結合にすると、どんなに強くしても 25 ms しか保ちません。全員が同時に発火すると、
+送り合った入力が全員の不応期に当たって捨てられ、輪が自分で自分を消すためです。<code>groups: 1</code> は弾かれます。</p>
+
+<h3>AND ゲート（2 つ揃ったときだけ通す）</h3>
+<p><strong class="bad">閾値下の興奮を 2 つ足す方法は使えません。</strong>最弱の 2 シナプスでも、
+約 200 Hz の入力を時定数 20 ms で積分すれば閾値を超えます。強く駆動された細胞には抑制も効きません（不応期で捨てられる）。
+<strong>脱抑制</strong>で作ります。</p>
+<pre><code>const gate = W.cells(16), veto = W.cells(8);
+W.wire(signal, gate, 8);        // 信号は弱く門へ
+W.wire(signal, veto, 60);       // 同時に拒否権を立てる
+W.wire(veto, gate, -128);       // 拒否権は門を閉じる
+W.wire(state, veto, -128);      // 状態が立っているときだけ拒否権が黙る
+W.wire(gate, [mn9], 200);       // 門が開けば運動ニューロンへ</code></pre>
+<p><span class="good">条件成立時 18.0 スパイク、不成立時 0.0。</span>記憶と組み合わせれば
+<strong>10 秒前に見たものに基づいて行動する</strong>——素のハエ脳は 0.0 対 0.0 で区別できません。</p>
+
+<h3>状態機械（順序を扱う）</h3>
+<p>上の 3 つを並べるだけです。A → B → C の順に来たときだけ発火する機械：</p>
+<pre><code>for (let k = 0; k &lt; 3; k++) {
+  const gate = W.cells(16), veto = W.cells(8);
+  W.wire(input[k], gate, 8);        // AND：この入力 かつ この状態
+  W.wire(input[k], veto, 60);
+  W.wire(veto, gate, -128);
+  W.wire(S[k], veto, -128);
+  W.wire(gate, S[k + 1], 60);       // 次の状態を書き
+  W.wire(gate, S[k], -32);          // 自分の状態を消す
+}</code></pre>
+<p><span class="good">20 列を試して 20 列とも正解</span>（ABC は発火、ACB・BAC・AAB・AAA などは沈黙）。
+常にちょうど 1 つの状態だけが立ちます。新規 200 細胞・7,648 接続。
+<strong>順序はハエの脳に存在しない概念です。</strong></p>
+
+<h3>新しい感覚入力を学習装置に繋ぐ</h3>
+<p>ハエの目はコネクトームに丸ごと入っていますが（片眼 668 個眼）、<strong>このモデルではキノコ体に 1 本も届いていません</strong>。
+架けられます。</p>
+<pre><code>for (const ommatidium of eyes) {                  // R7 が個眼そのもの（両眼 1,336 個）
+  const targets = pickRandom(kenyonCells, 71);    // 実物の投射ニューロンと同じ形
+  for (const kc of targets) W.link(ommatidium, kc, 12);
+}</code></pre>
+<p><span class="good">8 場面を 0.875〜1.000 で識別</span>（橋なしでは 0.125＝偶然）。
+キノコ体の発火率は 5.4%＝本物のハエの疎符号のまま。<code>retina.mjs</code> が画像を個眼の発火率に変換します
+（個眼間角 4.77°、実物は約 5°）。</p>
+
+<h3>容量を増やす</h3>
+<pre><code>const kc = W.cells(15531);                        // 新しいキノコ体細胞
+for (const k of kc) {
+  for (const c of pickRandom(channels, 6)) W.link(c, k, 12);   // 入力
+  for (const a of APL) { W.link(a, k, -19); W.link(k, a, 22); } // 疎性の帰還ループへ
+  for (const m of pickRandom(MBONs, 12)) W.link(k, m, 4);       // 読み出しへ
+}</code></pre>
+<p>入力チャンネルを 302 → 1,602 に広げると符号の発火率が 57.7% まで上がりますが、
+キノコ体細胞を 20,708 個まで増やすと <span class="good">5.3% に戻ります</span>——
+1 時間前に存在しなかった細胞に対して、既存の APL 帰還ループが正しく働きます。</p>
+
+<h2>組み立て例：最小の会話</h2>
+<p>部品を組むと、<strong>2 匹のハエが会話します。</strong>新しい機構はひとつも要りません。<br>
+<strong>→ ブラウザで動くデモ：<a href="../kaiwa/">会話するハエ</a></strong>（3D の 2 匹、経路を 1 本ずつ遮って偶然でないことを確かめられます）</p>
+<p class="note">デモが読むのは全脳ではなく、その会話で実際に発火する 3,150 ニューロン（1,510 万結合のうち 195,599 本）だけを切り出したものです。
+発火しないニューロンを消すのは黙らせるのと等価なので、<strong>72 試行すべてが全脳とスパイク単位で一致</strong>します。
+28.5 MB・107.6 MB → <strong>281 KB・4.1 MB</strong>。<code>kakou/cut.mjs</code>。</p>
+<pre><code>// A（問う側）
+const wants = W.memory();                 // 欲しい、を保持する
+wants.write(driveCells);
+W.wire(wants, WING, 12);                  // 欲しい＝翅を鳴らして問う
+andGate(W, earYes, wants, [MN9]);         // 「はい」を聞いた かつ まだ欲しい → 食べる
+
+// B（答える側）
+const knows = W.memory();                 // 餌を見た、を保持する
+knows.write(sawFoodCells);
+andGate(W, earAsk, knows, CLICK, 400);    // 問いを聞いた かつ 知っている → クリックで答える</code></pre>
+<p>あとは 5 ms ごとに、互いの運動ニューロンが出した分を相手の聴覚に流し込むだけです。</p>
+<table>
+<tr><th>A が欲しい</th><th>B が知っている</th><th class="n">A 問う</th><th class="n">B 答える</th><th class="n">A 食べる</th></tr>
+<tr><td>はい</td><td>はい</td><td class="n">4,000</td><td class="n good">242</td><td class="n good"><strong>16</strong></td></tr>
+<tr><td>はい</td><td>いいえ</td><td class="n">4,000</td><td class="n">77 <span class="note">※</span></td><td class="n bad">0</td></tr>
+<tr><td>いいえ</td><td>はい</td><td class="n">0</td><td class="n">0</td><td class="n bad">0</td></tr>
+<tr><td>いいえ</td><td>いいえ</td><td class="n">0</td><td class="n">0</td><td class="n bad">0</td></tr>
+<tr><td colspan="2"><strong>加工なしの同じ 2 匹</strong></td><td class="n">0</td><td class="n">0</td><td class="n bad">0</td></tr>
+</table>
+<p class="note">5 シードの平均、どのシードでも同じ。※ B が何も知らない行で 77 回鳴っているのは、巨大線維（逃避のニューロン）が
+A の羽音に驚いているだけです。本物のハエもそうします。本当の返事の 1/3 の頻度で、A の門を開く水準には届かないので誤答にはなりません。</p>
+<p><strong>どちらの側も素のハエにはできません。</strong> B は「餌を見た」を 50 ms しか保持できず、
+どちらも「聞いた信号」と「自分が知っていること」を突き合わせる手段を持っていません。
+A の欲求と B の知識に砂糖を使わなかったのは、砂糖が単独で MN9 を 63.8 Hz で駆動してしまい、
+会話が起きる前に結果が決まるからです（LC4 と LC11 はどちらも 0.0 Hz）。</p>
+
+<h3>ここから伸ばす</h3>
+<p>以下は<strong>まだ作っていません</strong>。どれも既存の部品で届く範囲なので、方向だけ書いておきます。</p>
+<table>
+<tr><th>やること</th><th>手持ちの部品</th><th>足りないもの</th></tr>
+<tr><td><strong>「いいえ」を言う</strong><br><span class="note">いまは沈黙が「いいえ」</span></td>
+    <td>3 本目の音の経路がそのまま空いている（MN9 の口吻音 → 頭部剛毛）。B に
+        「問いを聞いた <em>かつ</em> 知らない」の門をもう 1 つ付ければよい</td>
+    <td class="good">なし。門をもう 1 つ</td></tr>
+<tr><td><strong>語彙を増やす</strong><br><span class="note">単語＝音の並び</span></td>
+    <td>聞き手側は<strong>できています</strong>——状態機械（上記）が A→B→C の順を 20 列中 20 列で判定します。
+        音は 3 種類あるので、3 音の並びで 27 語</td>
+    <td class="bad">話し手側の時計。このモデルの遅延はシナプス 1.8 ms だけなので、
+        音を 100 ms 間隔で並べるには細胞を鎖状に繋いだ遅延線が要ります。60 段で試して 2 段しか灯らず、未完成</td></tr>
+<tr><td><strong>3 匹以上にする</strong></td>
+    <td>結合は「相手の運動出力を自分の聴覚に流す」だけなので、匹数分のループにするだけ</td>
+    <td class="good">なし</td></tr>
+<tr><td><strong>覚えた語を使う</strong><br><span class="note">意味を学習させる</span></td>
+    <td>キノコ体の学習機構（区画・ドーパミン・誤り駆動）がそのまま載る。
+        聴覚をキノコ体に繋ぐ配線は、目でやったのと同じ手口（上記「新しい感覚入力」）</td>
+    <td class="warm">配線は書けるが、学習で点が上がることは未検証</td></tr>
+</table>
+
+<h2>知っておくべき制限</h2>
+<ol>
+<li><strong>同期させない。</strong> 不応期のニューロンに届いた入力は——興奮も抑制も——破棄されます。
+全結合の自己興奮は自滅し、飽和した細胞には抑制が効きません。<strong>輪</strong>と<strong>脱抑制</strong>で構造的に回避してください。強度の調整では解決しません。</li>
+<li><strong>入口と容量は一組。</strong> 302 チャンネル × 71 細胞 = 21,442 接点。チャンネルだけ 1 万本にすると
+1 本が 2.1 細胞にしか届かず、存在しないのと同じになります。必ず一緒に増やす。</li>
+<li><strong>嗅覚経路に位置情報は入りません。</strong> 画素はシャッフルして配られるので置換不変で、
+局所特徴という概念が原理的に存在しません。位置が要るなら目から入れてください。</li>
+<li><strong>この模型では目が伝わりません。</strong> 光受容器は撃つのに中枢へ 0 スパイク。配線は在る（2,572 細胞が閾値分を受けている）が、
+実際のハエの光受容器がスパイクを出さない段階的電位の細胞なので、LIF モデルに載りません。上の「橋」で迂回します。</li>
+<li><strong>キノコ体だけ使うときは外を黙らせる。</strong> 全脳モデルは嗅覚入力で暴走します（<a href="../nioi/">詳細</a>）。
+<code>brain.silence(outside, true)</code> を忘れると測定が 3 倍狂います。</li>
+</ol>
+
+<h2>まだ示していないこと</h2>
+<p>ここに並んでいるのは<strong>機構</strong>の実測です——回路が何をするか、動物に何を払わせるか。
+<strong>どの回路も「学習課題の点数を上げる」ことはまだ示していません。</strong>
+入口を広げた脳の学習実験は、基準条件（3,000 回練習で未知書体 0.5087）だけ完走して、残りは途中です。</p>
+
+<h2>はじめる</h2>
+<pre><code>git clone https://github.com/satorunet/hae
+cd hae
+
+node kakou/hold.mjs        # 記憶：沈黙の基準値と、保持する輪
+node kakou/erase.mjs       # 消去：書込・保持・消去・再書込
+node kakou/gate.mjs        # AND：遅延見本合わせ
+node kakou/sequence.mjs    # 状態機械：20列のテスト
+node kakou/bridge.mjs      # 目を学習装置に繋ぐ
+node kakou/channels.mjs    # 入口の幅と容量
+node kakou/see.mjs         # 目が伝わらないことの確認
+node kakou/talk.mjs        # 2匹の会話
+node kakou/bake.mjs        # /kaiwa/ が読む加工済みの脳を焼く
+node kakou/cut.mjs         # それを、実際に使う部分だけに切り詰める</code></pre>
+
+<footer>
+  コード: <code>kakou/</code>（<a href="https://github.com/satorunet/hae">satorunet/hae</a>、MIT）。全測定値は <code>kakou/README.md</code>。
+  モデル: Shiu et al., <i>Nature</i> 2024 (MIT)／配線: FlyWire v783 (CC-BY 4.0)。
+  関連: <a href="../flybrain/">flybrain</a>・<a href="../shinka/">進化するハエ脳</a>・<a href="../nioi/">匂いを使う</a>・<a href="../ningen/">人体を操るハエ脳</a>・<a href="../">ひらがなを読むハエ</a>
+</footer>
+</body>
+</html>
