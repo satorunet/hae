@@ -4,11 +4,11 @@
 // beam and four one-beads below, and a bead counts when it is against the beam. Everything on screen is
 // read out of the brain in the worker - which bead rings are firing is what moves a bead - and nothing
 // on this page does any arithmetic.
-import { makeStage } from './stage.js?v=31';
+import { makeStage } from './stage.js?v=35';
 import { Sound } from '../juku/sound.js';
 
 const $ = (id) => document.getElementById(id);
-const PAGE_V = 'v126 / stage31';        // shown on the page, so a stale file can be seen at a glance
+const PAGE_V = 'v130 / stage35';        // shown on the page, so a stale file can be seen at a glance
 addEventListener('error', (e) => { const s = $('say'); if (s) s.textContent = 'エラー: ' + (e.message || e.type); });
 addEventListener('unhandledrejection', (e) => { const s = $('say'); if (s) s.textContent = 'エラー: ' + ((e.reason && e.reason.message) || e.reason); });
 const snd = new Sound();

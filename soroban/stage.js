@@ -64,14 +64,28 @@ export async function makeStage(canvas, { rods = 4, digits = 3, onProgress, onHi
     camera.position.set(2 * d / 124, 18 * d / 124, d);
     camera.lookAt(0, -3, 2);
   }
+  let poke = 0;                                      // a tap on the fly itself: wings, and a shiver
+  const POKE_T = 0.9;
   {
+    const rayc = new THREE.Raycaster(), ndc = new THREE.Vector2();
+    /** Did that point land on the fly? */
+    var onFly = (e) => {
+      try {
+        const r = canvas.getBoundingClientRect();
+        ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+        rayc.setFromCamera(ndc, camera);
+        // the skinned mesh - the fly you actually see - hangs off the scene, not off body.root
+        const on = body.skin ? [body.root, body.skin] : [body.root];
+        return rayc.intersectObjects(on, true).length > 0;
+      } catch (err) { return false; }               // tapped before there was a fly to tap
+    };
     let drag = null, pinch = 0;
     const pts = new Map();
     canvas.style.touchAction = 'none';
     canvas.addEventListener('pointerdown', (e) => {
       canvas.setPointerCapture(e.pointerId);
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pts.size === 1) drag = { x: e.clientX, y: e.clientY, yaw: view.yaw, tilt: view.tilt };
+      if (pts.size === 1) drag = { x: e.clientX, y: e.clientY, yaw: view.yaw, tilt: view.tilt, fly: onFly(e) };
       if (pts.size === 2) { drag = null; pinch = spread(); }
     });
     canvas.addEventListener('pointermove', (e) => {
@@ -87,7 +101,12 @@ export async function makeStage(canvas, { rods = 4, digits = 3, onProgress, onHi
       view.tilt = Math.max(-1.35, Math.min(0.25, drag.tilt - (e.clientY - drag.y) * 0.005));
       applyView();
     });
-    const up = (e) => { pts.delete(e.pointerId); if (pts.size < 2) pinch = 0; if (!pts.size) drag = null; };
+    const up = (e) => {
+      const d = drag;
+      pts.delete(e.pointerId); if (pts.size < 2) pinch = 0; if (!pts.size) drag = null;
+      // a tap on the fly that never became a drag: it buzzes and shivers
+      if (d && d.fly && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 8) poke = POKE_T;
+    };
     canvas.addEventListener('pointerup', up);
     canvas.addEventListener('pointercancel', up);
     canvas.addEventListener('wheel', (e) => {
@@ -168,7 +187,8 @@ export async function makeStage(canvas, { rods = 4, digits = 3, onProgress, onHi
   // some leg and nothing has to fly anywhere. Only the legs move.
   const SEAT = new THREE.Vector3(0, (G.top + G.bottom) / 2 - 1, 2.2);     // in the board's own frame
   const fly = {
-    hands: FRONT.map((leg) => ({ leg, bead: null, ang: restLeg[leg].slice(), reach: 99, t: 0 })),
+    hands: FRONT.map((leg) => ({ leg, bead: null, ang: restLeg[leg].slice(), reach: 99, t: 0,
+      jit: new Array(7).fill(0), jitT: 0 })),
     lean: new THREE.Vector2(0, 0),       // it leans over the board rather than letting a bead go alone
     buzz: 0, wingPh: 0, motion: 0,       // the wings run while the legs are moving, and not otherwise
   };
@@ -176,7 +196,7 @@ export async function makeStage(canvas, { rods = 4, digits = 3, onProgress, onHi
   /** The wing stroke of flygym's own kinematics, blended in by how hard the fly is buzzing. */
   function beatWings(dt) {
     // how fast the legs are actually moving, in radians a second over all six of them
-    const drive = Math.min(1, fly.motion / Math.max(1e-4, dt) / 7);
+    const drive = poke > 0 ? 1 : Math.min(1, fly.motion / Math.max(1e-4, dt) / 7);
     fly.buzz = Math.max(drive, fly.buzz - dt * 5);
     fly.wingPh += dt * 34 * Math.PI * 2;                       // 34 strokes a second
     for (const w of body.wings) {
@@ -211,11 +231,26 @@ export async function makeStage(canvas, { rods = 4, digits = 3, onProgress, onHi
     body.thorax.obj.worldToLocal(out);
     return out;
   }
+  const shak = new Array(7).fill(0);
+  /** While it is shivering, every joint is nudged about - the angles themselves are left alone. */
+  function setLeg(hand) {
+    if (poke <= 0) { body.setLeg(hand.leg, hand.ang); return; }
+    const amp = 0.34 * (poke / POKE_T);
+    for (let k = 0; k < 7; k++) shak[k] = hand.ang[k] + hand.jit[k] * amp;
+    body.setLeg(hand.leg, shak);
+  }
   function reachLegs(dt) {
     fly.motion = 0;
     for (const hand of fly.hands) {
       const rest = restLeg[hand.leg];
       const was = hand.ang.slice();
+      if (poke > 0) {                               // a new set of little twitches every 50-140 ms
+        hand.jitT -= dt;
+        if (hand.jitT <= 0) {
+          hand.jitT = 0.05 + Math.random() * 0.09;
+          for (let k = 0; k < 7; k++) hand.jit[k] = Math.random() * 2 - 1;
+        }
+      }
       if (swipe > 0 && (hand.leg === 'lf' || hand.leg === 'rf')) {
         const t = 1 - swipe / SWIPE_T, side = hand.leg === 'lf' ? 1 : -1;
         tmp2.set(-W / 2 - 3 + (W + 6) * t, -G.beamUp - 1.2 + side * 0.8, G.beadR * 0.9);
@@ -224,7 +259,7 @@ export async function makeStage(canvas, { rods = 4, digits = 3, onProgress, onHi
         hand.ang = body.ik(hand.leg, [tmp2.x, tmp2.y, tmp2.z], hand.ang, rest, 10, 0.02);
         hand.reach = 99; hand.bead = null;
         for (let k = 0; k < 7; k++) fly.motion += Math.abs(hand.ang[k] - was[k]);
-        body.setLeg(hand.leg, hand.ang);
+        setLeg(hand);
         continue;
       }
       if (hail > 0 && (hand.leg === 'lf' || hand.leg === 'rf')) {
@@ -238,7 +273,7 @@ export async function makeStage(canvas, { rods = 4, digits = 3, onProgress, onHi
         hand.ang = body.ik(hand.leg, [tmp2.x, tmp2.y, tmp2.z], hand.ang, rest, 10, 0.02);
         hand.reach = 99; hand.bead = null;
         for (let k = 0; k < 7; k++) fly.motion += Math.abs(hand.ang[k] - was[k]);
-        body.setLeg(hand.leg, hand.ang);
+        setLeg(hand);
         continue;
       }
       if (hand.bead) {
@@ -251,7 +286,7 @@ export async function makeStage(canvas, { rods = 4, digits = 3, onProgress, onHi
         hand.reach = 99;
       }
       for (let k = 0; k < 7; k++) fly.motion += Math.abs(hand.ang[k] - was[k]);
-      body.setLeg(hand.leg, hand.ang);
+      setLeg(hand);
     }
     aimHead(dt);
     body.update();
@@ -385,6 +420,7 @@ export async function makeStage(canvas, { rods = 4, digits = 3, onProgress, onHi
     clock += dt;
     swipe = Math.max(0, swipe - dt);
     hail = Math.max(0, hail - dt);
+    poke = Math.max(0, poke - dt);
     const waiting = [];
     // ---- the beads are not moved; they slide. Anything pushed keeps going until it hits something.
     for (const b of beads) {

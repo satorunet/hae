@@ -485,13 +485,13 @@
   // Browsers hold on to this file, so a new version of the page can sit unseen behind an old one.
   // This asks the server for it once, and if what comes back is newer than what is running, reloads.
   (function () {
-    const mine = 126;
+    const mine = 130;
     fetch(location.pathname, { cache: 'reload' }).then((r) => r.text()).then((t) => {
       const m = t.match(/app\.js\?v=(\d+)/);
       if (m && +m[1] > mine) location.replace(location.pathname + '?v=' + m[1]);
     }).catch(() => {});
   })();
 </script>
-<script type="module" src="./app.js?v=126"></script>
+<script type="module" src="./app.js?v=130"></script>
 </body>
 </html>
