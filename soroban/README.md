@@ -218,16 +218,6 @@ globalThis.onmessage({ data: { type: 'init' } });
 The page itself runs the same way with a DOM stub: `app.js` only ever touches `getElementById`,
 `addEventListener` and `requestAnimationFrame`.
 
-## The share card
-
-```sh
-python3 soroban/tools/og-card.py
-rsvg-convert -w 1200 -h 630 soroban/og-card.svg -o og-soroban.png
-```
-
-Drawn, not screenshotted — but the beads are laid out by the real rule, so the board in it is a number
-you can read.
-
 ---
 
 Brain model: Shiu et al., *Nature* 2024 (MIT); connectome: FlyWire v783 (CC-BY 4.0); body:
