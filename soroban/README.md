@@ -1,148 +1,144 @@
 # soroban — ハエにそろばん覚えさせてみた
 
-**[hae.satoru.net/soroban/](https://hae.satoru.net/soroban/)** — a soroban built out of new neurons
-inside a real fly's connectome, worked by a fly with its own six legs.
+*English: [README.en.md](README.en.md)*
 
-The brain is the FlyWire v783 connectome, 138,639 neurons and 16.35 M connections, run as the
-whole-brain leaky integrate-and-fire model of Shiu et al. Nothing in it was rewired. New neurons were
-added beside it, and out of them: eight rods of beads that add, subtract and multiply 8-digit numbers.
-The number on the page is not computed anywhere else — it is read off which neurons are firing.
+**[hae.satoru.net/soroban/](https://hae.satoru.net/soroban/)** — 実在のショウジョウバエの脳の中に
+ニューロンで作ったそろばんと、それを 6 本の脚で弾くハエ。
 
-## What a fly cannot do
+動いているのは FlyWire v783 のコネクトーム（13 万 8,639 ニューロン・1,635 万結合）を、Shiu らの全脳
+LIF モデルとして走らせたものです。**既存の配線は 1 本も変えていません**。その横に新しいニューロンを足し、
+そこから 8 桁の足し算・引き算・かけ算をする 8 本の棒を組みました。画面の数字は外で計算した値ではなく、
+**どのニューロンが発火しているかを読んだもの**です。
 
-Give it 200 ms of sugar and stop: 50 ms later not one of the 138,639 neurons is still firing
-([`kakou/hold.mjs`](../kakou/)). Half a second is beyond it, so "do something about what you just saw"
-has nowhere to live.
+## ハエの脳にできないこと
 
-## The four parts that were added (the calculation API)
+砂糖を 200 ms あたえて止めると、50 ms 後には 13 万 8,639 個のうち 1 個も発火していません
+（[`kakou/hold.mjs`](../kakou/)）。0.5 秒が越えられないので、「さっき見たものについて何かする」の
+置き場所がありません。
 
-The connectome has no free synapse slots, so a new connection would have to take an existing one.
-[`kakou/graft.mjs`](../kakou/graft.mjs) grows the graph instead: new cells at the end of the CSR and
-extra empty slots on the rows that need them. **Grown but unwired, the brain is spike-for-spike the
-connectome's — 0 of 138,639 neurons differ.**
+## 足した 4 つの機能（計算 API）
 
-| | what it is | how it had to be built |
+コネクトームにはシナプスの空き枠がないので、新しい結合を作ると既存の結合を潰すことになります。
+[`kakou/graft.mjs`](../kakou/graft.mjs) は代わりにグラフを伸ばします —— CSR の末尾に新しい細胞を置き、
+必要な行にだけ空き枠を足す。**足しただけで何も繋がなければ、元のコネクトームとスパイク 1 発まで同じ
+（13 万 8,639 個中 0 個が違う）。**
+
+| | 何か | どう作るしかなかったか |
 |---|---|---|
-| **save & loop** | holds a value | a ring wired all-to-all goes out at once: everyone fires together and the volley lands in each other's refractory period. Split into groups that push only the next group, it runs like a bucket brigade and still holds after 10 s. Holding *is* circulating — a delay line, not a flip-flop |
-| **reset** | clears it | another cell saying "stop" into the ring. Too weak and it survives; too strong and it never comes back up. 16–64 synapses works, 128 does not |
-| **if** | "only when" | two subthreshold inputs do **not** add up here — one alone gets through. What works is the other way round: a cell that constantly vetoes the path, and the condition silences *it*. Every soroban rule is this shape |
-| **program control** | one step after another | save = the state, if = the condition to move on, reset = forget the last state. Three in a row answer only to A-then-B-then-C, which is place → move → commit |
+| **セーブ＆ループ** | 値を保つ | 全結合の輪は一斉に発火して止まる。全員が同時に撃つので、送った信号が互いの不応期に着いて捨てられる。細胞を組に分け、隣の組だけを押すようにするとバケツリレーになり、10 秒後も同じ調子で回る。**保持＝循環**であって、フリップフロップではない（遅延線記憶と同じ考え方） |
+| **リセット** | 消す | 回っている輪に、別の細胞から「止まれ」を送る。弱すぎると消えず、強すぎると二度と立ち上がらない。16〜64 シナプスで効き、128 では駄目 |
+| **条件分岐** | 「〜のときだけ」 | 閾値未満の入力 2 つは**足し合わさらない** —— 片方だけで通ってしまう。効いたのは逆の作り方で、通り道を常に拒否している細胞を 1 つ立て、条件がそろうとその細胞のほうが黙る。そろばんの規則は全部この形 |
+| **プログラム制御** | 手順どおりに進める | セーブ＝いまの状態、条件分岐＝次へ進む条件、リセット＝前の状態を忘れる。3 つ並べると「A のあと B のあと C」のときだけ反応する。これが 置く → 動かす → 確定する |
 
-## Why a soroban, out of those four
+## なぜ、その 4 つでそろばんなのか
 
-No circuit here adds. A box that takes two numbers and returns their sum cannot be built from this
-material. But a soroban does not add either — it *moves beads*: the number is not recorded anywhere,
-it **is** where the beads are, and arithmetic is a pile of rules of the form "in this arrangement, move
-that bead". So a soroban needs exactly two things: somewhere to keep a value, and rules to move it by.
+ここには足し算をする回路がありません。数を 2 つ受け取って和を返す装置は、この材料では組めない。
+ところがそろばんも足し算はしていません —— **珠を動かしている**だけです。数はどこにも記録されておらず、
+珠がどこにあるかがそのまま数で、計算は「こういう並びのときは、この珠をこう動かす」という決まりごとの
+積み重ねでしかない。つまりそろばんが要求するのは、値を置いておく場所と、動かす決まりごとの 2 つだけです。
 
-    one bead        = one save & loop
-    one rule        = one if
-    clearing a rod  = reset
-    place/move/commit = program control
+    珠 1 個            = セーブ＆ループ 1 つ
+    決まりごと 1 つ    = 条件分岐 1 つ
+    棒を払う           = リセット
+    置く→動かす→確定  = プログラム制御
 
-A rod is also the right shape twice over: a ring holds **one** state, and a rod is a five-bead that is
-up or down and four one-beads of which some are up. `5h + e`.
+棒の形も二重に都合がよい。輪は状態を**ひとつ**しか持てず、棒は「上下する五珠」と「いくつか上がっている
+4 つの一珠」でできている。`5h + e`。
 
-## A rod (`soroban.mjs`)
+## 棒 1 本（`soroban.mjs`）
 
-    h   a one-hot pair     the five-bead: up or down
-    e   a one-hot five     the one-beads: 0-4 of them up
-    b   the operand        the same again, holding the digit being put in
-    c5 / c5no              did the one-beads pass five
-    cout                   did the rod pass ten
+    h   one-hot のペア   五珠：上か下か
+    e   one-hot の 5     一珠：0〜4 個が梁に寄っている
+    b   オペランド       同じものがもう一組、入れる側の数字を持つ
+    c5 / c5no            一珠が五を越えたか
+    cout                 その桁が十を越えたか
 
-    TICK    e + be  -> the earth gate  -> writes the shadow, says whether it reached five
-            h + bh + c5 -> the heaven gate -> writes the shadow, says whether the rod carried
-    TOCK    every shadow becomes the beads
-    CARRY   one carry tick ripples every cout into the rod above
-    CLEAR   shadows and carries are wiped
-    SET     a digit straight onto the beads, the way a hand places a number
+    TICK    e + be      -> 一珠のゲート -> 影を書き、五に届いたかを出す
+            h + bh + c5 -> 五珠のゲート -> 影を書き、桁上がりしたかを出す
+    TOCK    影がぜんぶ珠になる
+    CARRY   carry tick 一発で、すべての cout が上の桁へ伝播する
+    CLEAR   影と桁上がりを消す
+    SET     手で数を置くように、数字を直接珠に置く
 
-Master and slave, as in the counting machine: nothing is ever read in the phase that writes it.
-Taking away is a second bank of gates with a borrow where the carry was; multiplying is a **loop rod**
-that is not part of the number, counted down a round at a time until it is spent.
+マスター／スレーブ構成です。**書いた相と同じ相では何も読みません**。引き算は桁上がりの代わりに借りを持つ
+もう一組のゲート、かけ算は数に入らない**ループ棒**を 1 周ごとに減らし、尽きたら止まります。
 
-Eight rods and the loop rod: 34,760 new cells, phases of 100 ms, a tick of 740 ms (a carry costs 40 ms
-a rod to travel, so the tick has to be long enough for the deepest ripple).
+8 本＋ループ棒で 34,760 細胞、1 相 100 ms、tick 740 ms（桁上がりの伝播は 1 桁 40 ms なので、いちばん深い
+繰り上がりが通りきる長さが要ります）。
 
+## 払わずに、置く
 
-## Placing, not clearing
+盤は計算のたびに消しません。ページが速く感じるのは、ほぼこれです。
 
-The board is not wiped between sums, and this is most of what makes the page feel quick.
+* 打ち込まれた数字は、手で置くのと同じく**一発で珠に置かれます**。
+* **2 つめの数は盤に置きません** —— `=` を押した時点で 1 つめは既に盤の上にあるので、ご破算も置き直しもせず、
+  動かす所だけを実行します。
+* 答えも盤に残るので、続けて計算するときはそこから始まります。
+* 足し算とかけ算は順序を入れ替えても同じなので、**盤に乗っているほうを「置いてある数」として扱います**。
 
-* What is keyed in is **placed** straight onto the beads, one pulse, the way a hand does.
-* The **second** number is never put on the board at all — at `=` the first one is already standing
-  there, so there is no ご破算 and no placing, only the move itself.
-* The answer is left standing, so a sum carried on from it starts from where it is.
-* Adding and multiplying are the same either way round, so whichever number is already up is the one
-  the machine treats as placed.
-
-| | placed each time | from the beads as they stand |
+| | 毎回置き直す | 盤の状態から始める |
 |---|---|---|
-| 12 + 34 | 1.45 s of fly | **1.25 s** |
-| 5000 − 1234 | 2.45 s | **2.25 s** |
-| 123 × 9 | 26.35 s | **23.80 s** |
+| 12 + 34 | ハエ時間 1.45 秒 | **1.25 秒** |
+| 5000 − 1234 | 2.45 秒 | **2.25 秒** |
+| 123 × 9 | 26.35 秒 | **23.80 秒** |
 
-**One trap, and the rule that came out of it.** Writing a digit over a rod that already has beads up
-leaves that rod half-driven: the board *reads* right, but a borrow that has to travel through it later
-comes out wrong (`7 − 9` answered `49999998` instead of `99999998`). A rod is now emptied before the
-new digit goes on, which is what a hand does anyway, and a rod already showing the wanted digit is not
-touched at all.
+**ひとつの罠と、そこから出た規則。** 珠が上がっている棒に数字を上書きすると、その棒が半端に駆動された
+状態で残ります。盤を*読むと*正しいのに、あとでそこを通る借りが失敗する（`7 − 9` が `99999998` ではなく
+`49999998` になった）。いまは**新しい数字を置く前に棒を払います** —— 手でやっていることと同じです。
+すでに目的の数字が出ている棒には、そもそも触りません。
 
+## 学習がある所と、無い所
 
-## Where the learning is, and where it is not
+キノコ体はもともと学習装置で、実際に使っています —— **数字を読む所**で。手書きには規則が書けないので、
+そこは [`/suji/`](../suji/) のものです。ドーパミンで抑圧をかける練習を 11 万 217 回、MNIST のテスト数字で
+約 9 割、同じ脳の中にシナプスの強さとして残っています。
 
-The mushroom body is a learning machine already, and it is used — for **reading the digits**.
-Handwriting has no rule, so that part is [`/suji/`](../suji/)'s: 110,217 practices of dopamine-gated
-depression, ~90% on MNIST test digits, kept as synaptic gains in the same brain.
+数字が珠に乗ってから先は、何も学習しません。「この並びならこの珠を動かす」は書き下せるので、覚えさせずに
+配線しました —— **規則で書けるものは回路に、書けないものだけ学習に**。`hyou.mjs` で逆もやっています
+（九九のように答えを丸暗記させる）。繰り上がりはすぐ覚えたのに、答えの桁は覚えきれませんでした。珠を
+動かすほうが速くて正確です。
 
-From the moment a digit is on the beads, nothing is learned. "In this arrangement, move that bead" can
-be written down, so it is wired, not taught — **rules where rules exist, learning only where they do
-not**. `hyou.mjs` tried the other way, learning the addition table by heart: the carry came easily, the
-digit never did. Moving beads is both quicker and right.
+正解のあとの蜜は演出です。そろばんの回路に可塑性はありません。
 
-The honey after a correct sum is decoration. There is no plasticity anywhere in the soroban.
+## 8 桁
 
-## Eight digits
+棒は 8 本、それに数には入らない「かけ算の回数を数える棒」が 1 本。99999999 + 1 は 00000000 に、0 − 1 は
+99999999 になります —— 走行距離計と同じで、桁が足りないぶんは上から溢れます。棒を増やせば桁も増えます
+（`digits=N`、横に並べて繋ぐだけ）。
 
-Eight rods, plus one that is not part of the number and counts the rounds of a multiplication.
-99999999 + 1 is 00000000 and 0 − 1 is 99999999: it overflows off the top like an odometer. More rods
-means more digits — they are wired side by side, `digits=N`.
+## 元のハエが払う代償
 
-## What it costs the animal
+ありません。そろばんを入れた状態でどの線も叩かなければ、脳はコネクトームのままスパイク 1 発まで同じです
+（砂糖・苦味・無刺激のいずれでも）。そろばんは、何かに駆動されるまで沈黙しています。
 
-Nothing. With the soroban in place and no line pulsed, the brain is the connectome's, spike for spike,
-on sugar, on bitter and on silence. The soroban is silent until something drives it.
+## ブラウザのために切り出す
 
-## Cutting it down for the browser
-
-The grafted brain is 173,399 neurons; nobody is downloading that. The bake does the expensive part on
-the server: build the graft, run every check sum in the **whole** brain, then keep only the cells that
-actually fired and the cells that drive them, and drop the empty synapse slots — on the new rows only,
-so the connectome's own rows still line up with /suji/'s learned weights. Deleting a cell that never
-fires is the same as silencing it, and it is checked: **the cut brain's answers must equal the whole
-brain's, digit for digit, or nothing is written.**
+足したあとの脳は 17 万 3,399 ニューロンで、そのまま配るものではありません。重い所はサーバでやります ——
+回路を組み、**全脳のまま**すべての検算を走らせ、そのうえで実際に発火した細胞とそこへ信号を送る細胞だけを
+残し、空のシナプス枠を落とす。落とすのは**新しい行だけ**なので、コネクトーム側の行は /suji/ の学習済みの
+重みと並びが合ったままです。発火しない細胞を消すのはその細胞を黙らせるのと同じこと、そして
+**切った脳の答えが全脳の答えと 1 桁でも違えば、何も書き出しません**。
 
 | | |
 |---|---|
-| grafted | 138,639 + **34,760** new cells = 173,399 |
-| what the page loads | **34,976 neurons, 2,584,695 connections, 118 KB** gzipped |
-| the engine | [`flybrain/`](../flybrain/) — 19 KB of WebAssembly |
-| a sum | 1.3–2.7 s of fly time, ~2.5x real time |
+| 足したあと | 138,639 ＋ **34,760** 細胞 ＝ 173,399 |
+| ページが読むもの | **34,976 ニューロン・2,584,695 結合・118 KB**（gzip） |
+| 計算の本体 | [`flybrain/`](../flybrain/) —— 19 KB の WebAssembly |
+| 1 回の計算 | ハエ時間で 1.3〜2.7 秒、実時間の約 2.5 倍速 |
 
 ---
 
-# Using it
+# 使い方
 
-Node 20+ (22 here). No install, no dependencies: the brain files are in `data/`, the engine is
-`../flybrain/`.
+Node 20 以上（ここでは 22）。インストールも依存もありません。脳のデータは `data/`、計算の本体は
+`../flybrain/` です。
 
-## The soroban, headless
+## そろばんをそのまま走らせる
 
 ```sh
-node soroban/soroban.mjs                    # the standard set of sums, every digit checked
+node soroban/soroban.mjs                    # 標準の問題集を解いて、全桁を照合する
 node soroban/soroban.mjs sums=999+1,123+456,7*8,500-321
-node soroban/soroban.mjs digits=8 ms=100    # rods, and the length of a phase
+node soroban/soroban.mjs digits=8 ms=100    # 棒の本数と、1 相の長さ
 ```
 
 ```
@@ -153,60 +149,60 @@ node soroban/soroban.mjs digits=8 ms=100    # rods, and the length of a phase
          7*8 = 056   right   23.75 s of fly in 14.3 s
 ```
 
-`build({ digits, plain, loop, ms })` returns a `Soroban`; the methods are the machine's:
+`build({ digits, plain, loop, ms })` が `Soroban` を返します。メソッドは機械そのものです。
 
 ```js
 import { Workshop } from '../kakou/graft.mjs';
 import { build } from './soroban.mjs';
 
-const plain = await (await Workshop.open({ cells: 1 })).build();   // the connectome, to pick drivers in
+const plain = await (await Workshop.open({ cells: 1 })).build();   // 駆動細胞を選ぶための素の脳
 const M = await build({ digits: 8, plain, loop: true, ms: 100 });
 M.reset(1); M.zero();
-M.place(12);            // straight onto the beads, one pulse
-M.put(34); M.add();     // the operand in, then one move (+ the carry ripple if any rod carried)
-M.number();             // '00000046' - read off the beads
-M.put(8); M.sub();      // and take away
-M.times(23, 4);         // rounds of adding, counted down on the loop rod
+M.place(12);            // 一発で珠に置く
+M.put(34); M.add();     // オペランドを入れ、1 回動かす（どこかの棒が繰り上がれば伝播も）
+M.number();             // '00000046' —— 珠を読んだ結果
+M.put(8); M.sub();      // 払う
+M.times(23, 4);         // ループ棒を減らしながら、その回数だけ足す
 ```
 
-## Baking the brain the page loads
+## ページが読む脳を焼く
 
 ```sh
 node soroban/bake-soroban.mjs digits=8 ms=100 loop=1
 # -> data/soroban.fbg.gz, soroban.json, soroban-pos.bin.gz, brain-outline.bin.gz
 ```
 
-It refuses to write if the cut brain disagrees with the whole brain on any check sum. **Re-run it after
-any change to `soroban.mjs`**, and bump the versions below, or the page will keep running the old one.
+切った脳が全脳と 1 問でも食い違えば書き出しません。**`soroban.mjs` を触ったら必ず焼き直し**、下のバージョンも
+上げること。さもないとページは古いほうを走らせ続けます。
 
-## The page
+## ページ側
 
-| file | |
+| ファイル | |
 |---|---|
-| `index.html` | the four tabs, and the reload guard (`const mine = N`) |
-| `app.js` | keypad, the number read off the beads, the brain map, `PAGE_V` |
-| `stage.js` | the 3D board: bead physics, the fly, inverse kinematics on the six legs |
-| `soroban-worker.js` | the brain itself, in a worker. `BUILD` must match what `app.js` checks |
-| `shikumi.html` | the long explanation |
+| `index.html` | 4 つのタブと、再読み込みの番人（`const mine = N`） |
+| `app.js` | 電卓、珠から数を読む所、脳の発火表示、`PAGE_V` |
+| `stage.js` | 3D の盤：珠の物理、蠅、6 本の脚の逆運動学 |
+| `soroban-worker.js` | 脳そのもの（ワーカー）。`BUILD` は `app.js` が照合する値と一致させる |
+| `shikumi.html` | 長いほうの説明 |
 
-Browsers hold on to these, so **every changed file gets a new `?v=`**: `app.js?v=N` and `const mine = N`
-in `index.html`, `stage.js?v=N` and `soroban-worker.js?v=N` in `app.js`, `data/…?v=N` in the worker.
-`PAGE_V` is printed on the page, so a stale file can be seen at a glance.
+ブラウザはこれらを掴んで離さないので、**変えたファイルには必ず新しい `?v=`** を付けます。`index.html` に
+`app.js?v=N` と `const mine = N`、`app.js` に `stage.js?v=N` と `soroban-worker.js?v=N`、ワーカーに
+`data/…?v=N`。`PAGE_V` は画面に出るので、古いファイルが残っていれば一目で分かります。
 
-The worker's protocol is four messages in and four out:
+ワーカーの手順は、入り 4 つ・出 4 つです。
 
 ```js
-worker.postMessage({ type: 'init' });                  // -> progress, then ready { n, nnz, build, mb }
-worker.postMessage({ type: 'show', n: 1234 });         // place a number on the beads (typing)
-worker.postMessage({ type: 'run', a, op, b });         // op is '+', '-' or '*'
+worker.postMessage({ type: 'init' });                  // -> progress のあと ready { n, nnz, build, mb }
+worker.postMessage({ type: 'show', n: 1234 });         // 打ち込んだ数を珠に置く
+worker.postMessage({ type: 'run', a, op, b });         // op は '+' '-' '*'
 worker.postMessage({ type: 'stop' });
-// back: { type:'frame', tag, flyMs, rods, fired, spikes } every 20 ms of fly time,
-//       { type:'say' }, { type:'done', answer, flyMs, wall }, { type:'error' }
+// 返り: { type:'frame', tag, flyMs, rods, fired, spikes } がハエ時間 20 ms ごと、
+//       { type:'say' } / { type:'done', answer, flyMs, wall } / { type:'error' }
 ```
 
-## Testing it without a browser
+## ブラウザなしで動かす
 
-Everything above was measured this way — stub the three globals a worker gets and import it:
+ここに並べた数値は全部この方法で測りました。ワーカーが受け取るグローバルを 3 つ差し替えて読み込むだけです。
 
 ```js
 globalThis.fetch = async (u) => new Response(await readFile(new URL(u).pathname.split('?')[0]));
@@ -215,14 +211,14 @@ await import('./soroban-worker.js');
 globalThis.onmessage({ data: { type: 'init' } });
 ```
 
-The page itself runs the same way with a DOM stub: `app.js` only ever touches `getElementById`,
-`addEventListener` and `requestAnimationFrame`.
+ページ本体も同じやり方で走ります。`app.js` が触るのは `getElementById`・`addEventListener`・
+`requestAnimationFrame` だけなので、DOM を偽物で差し替えれば Node で動きます。
 
 ---
 
-Brain model: Shiu et al., *Nature* 2024 (MIT); connectome: FlyWire v783 (CC-BY 4.0); body:
-[NeuroMechFly v2](https://github.com/NeLy-EPFL/flygym) (Apache-2.0); 3D: three.js (MIT).
-The workshop is [`kakou/`](../kakou/).
+脳モデル: Shiu et al., *Nature* 2024 (MIT)／配線: FlyWire v783 (CC-BY 4.0)／体:
+[NeuroMechFly v2](https://github.com/NeLy-EPFL/flygym) (Apache-2.0)／3D: three.js (MIT)。
+工房は [`kakou/`](../kakou/) です。
 
-The directory also holds an earlier calculator that adds by counting (`machine.mjs`, `digit.mjs`,
-`add.mjs`, `keisan.mjs`, `bake.mjs`); the soroban replaced it.
+このディレクトリには、数え上げで足していた以前の計算機（`machine.mjs`・`digit.mjs`・`add.mjs`・
+`keisan.mjs`・`bake.mjs`）も残っています。そろばんがそれを置き換えました。
