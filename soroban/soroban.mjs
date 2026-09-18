@@ -17,7 +17,8 @@
 //
 //   node soroban/soroban.mjs                 # add the standard set, and check every digit of it
 //   node soroban/soroban.mjs sums=999+1,123+456
-//   node soroban/soroban.mjs race=1          # against the counting machine, in fly time
+//   node soroban/soroban.mjs digits=8 ms=100 # rods, and the length of a phase
+import { pathToFileURL } from 'node:url';
 import { Workshop } from '../kakou/graft.mjs';
 import { G, drivers } from './lines.mjs';
 
@@ -276,4 +277,30 @@ export class Soroban {
     }
     return rounds;
   }
+}
+
+// ---------------------------------------------------------------- run it on its own
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const arg = Object.fromEntries(process.argv.slice(2).map((a) => a.split('=')));
+  const DIG = +(arg.digits || 3);
+  const SUMS = (arg.sums || '12+34,99+1,123+456,777+345,80-27,500-321,12-30,7*8,23*4').split(',');
+  const seed = +(arg.seed || 1);
+  const plain = await (await Workshop.open({ cells: 1 })).build();   // to pick the driver cells in
+  const M = await build({ digits: DIG, plain, loop: true, ...(arg.ms ? { ms: +arg.ms } : {}) });
+  const mod = 10 ** DIG;
+  let bad = 0;
+  console.log(`\n${M.W.newCells} new cells, ${DIG} rods, phase ${M.o.ms} ms, tick ${M.o.tickMs} ms\n`);
+  for (const e of SUMS) {
+    const [, a, op, b] = e.match(/^(\d+)([-+*])(\d+)$/);
+    const t0 = Date.now(), was = M.ms;
+    M.reset(seed); M.zero();
+    if (op === '*') M.times(+a, +b);
+    else { M.place(+a); M.put(+b); M.add(op === '-' ? '-' : '+'); }
+    const got = M.number();
+    const want = String((((op === '*' ? a * b : op === '-' ? a - b : +a + +b) % mod) + mod) % mod).padStart(DIG, '0');
+    if (got !== want) bad++;
+    console.log(`${e.padStart(12)} = ${got}   ${got === want ? 'right' : `WRONG (${want})`}`
+      + `   ${((M.ms - was) / 1000).toFixed(2)} s of fly in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+  }
+  console.log(`\n${SUMS.length - bad} of ${SUMS.length} right, ${(M.ms / 1000).toFixed(1)} s of fly in all`);
 }

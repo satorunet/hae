@@ -395,8 +395,8 @@
 発火しない細胞を消すのは、その細胞を黙らせるのと同じことなので、残りを捨てても結果は変わりません
 （切る前と切った後で答えが一致することを、書き出す前に毎回確かめています）。</p>
 
-<p>こうして<strong>数十メガバイトが 53 キロバイト</strong>になります。ブラウザはこの小さな配線表を読み込んで、
-発火の計算そのものは <strong>WebAssembly</strong> の小さな中身（20 キロバイトほど）で回します。
+<p>こうして<strong>数十メガバイトが 118 キロバイト</strong>になります（3 万 4,976 ニューロン・258 万結合）。
+ブラウザはこの小さな配線表を読み込んで、発火の計算そのものは <strong>WebAssembly</strong> の小さな中身（19 キロバイト）で回します。
 おかげでスマホでも、<strong>ハエの実時間より速く</strong>計算が進みます。</p>
 
 <p><a href="./shikumi.html"><strong>しくみの詳しい説明と全測定値 →</strong></a></p>
@@ -458,13 +458,13 @@
   // Browsers hold on to this file, so a new version of the page can sit unseen behind an old one.
   // This asks the server for it once, and if what comes back is newer than what is running, reloads.
   (function () {
-    const mine = 119;
+    const mine = 120;
     fetch(location.pathname, { cache: 'reload' }).then((r) => r.text()).then((t) => {
       const m = t.match(/app\.js\?v=(\d+)/);
       if (m && +m[1] > mine) location.replace(location.pathname + '?v=' + m[1]);
     }).catch(() => {});
   })();
 </script>
-<script type="module" src="./app.js?v=119"></script>
+<script type="module" src="./app.js?v=120"></script>
 </body>
 </html>
