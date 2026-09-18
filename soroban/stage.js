@@ -227,6 +227,20 @@ export async function makeStage(canvas, { rods = 4, digits = 3, onProgress, onHi
         body.setLeg(hand.leg, hand.ang);
         continue;
       }
+      if (hail > 0 && (hand.leg === 'lf' || hand.leg === 'rf')) {
+        // the answer is in: both forelegs go up off the board and come back down
+        const t = 1 - hail / HAIL_T;
+        const lift = Math.sin(Math.min(1, t * 1.25) * Math.PI);
+        const side = hand.leg === 'lf' ? 1 : -1;
+        tmp2.set(side * (5 + 3 * lift), -1 + 9 * lift, G.beadR * 0.9 + 5 * lift);
+        board.localToWorld(tmp2);
+        body.thorax.obj.worldToLocal(tmp2);
+        hand.ang = body.ik(hand.leg, [tmp2.x, tmp2.y, tmp2.z], hand.ang, rest, 10, 0.02);
+        hand.reach = 99; hand.bead = null;
+        for (let k = 0; k < 7; k++) fly.motion += Math.abs(hand.ang[k] - was[k]);
+        body.setLeg(hand.leg, hand.ang);
+        continue;
+      }
       if (hand.bead) {
         beadLocal(hand.bead, tmp);
         hand.ang = body.ik(hand.leg, [tmp.x, tmp.y, tmp.z], hand.ang, rest, 12, 0.012);
@@ -292,6 +306,8 @@ export async function makeStage(canvas, { rods = 4, digits = 3, onProgress, onHi
   let feed = 0, sip = 0, serve = 0;                 // drinking, and the feeder coming in and out
   let swipe = 0;                                    // the arm going across the board to clear it
   const SWIPE_T = 0.55;
+  let hail = 0;                                     // both forelegs up: the sum is done
+  const HAIL_T = 1.1;
   const tmp2 = new THREE.Vector3();
   /**
    * ご破算. Every bead is thrown back to zero at once and a foreleg goes across the board after them -
@@ -313,8 +329,10 @@ export async function makeStage(canvas, { rods = 4, digits = 3, onProgress, onHi
         TIP = new THREE.Vector3(), DIR = new THREE.Vector3(), UPY = new THREE.Vector3(0, 1, 0);
   /** A sum came out right: wheel the feeder in. */
   function reward(seconds = 4.5) { feed = seconds; }
-  /** Keys are being pressed again: the feeder pulls back, drop or no drop, and the legs are free. */
-  function stopFeed() { feed = 0; }
+  /** The sum is done: both forelegs up, which is the only thing it can say. */
+  function cheer() { hail = HAIL_T; }
+  /** Keys are being pressed again: the feeder pulls back, the arms come down, the legs are free. */
+  function stopFeed() { feed = 0; hail = 0; }
   function drink(dt) {
     const want = feed > 0 ? 1 : 0;
     serve += (want - serve) * Math.min(1, dt * (want ? 3.2 : 2));
@@ -366,6 +384,7 @@ export async function makeStage(canvas, { rods = 4, digits = 3, onProgress, onHi
   function frame(dt) {
     clock += dt;
     swipe = Math.max(0, swipe - dt);
+    hail = Math.max(0, hail - dt);
     const waiting = [];
     // ---- the beads are not moved; they slide. Anything pushed keeps going until it hits something.
     for (const b of beads) {
@@ -473,7 +492,7 @@ export async function makeStage(canvas, { rods = 4, digits = 3, onProgress, onHi
     return out;
   }
   return {
-    set, read, frame, resize, reward, stopFeed, sweep, renderer, beads, fly, view, applyView,
+    set, read, frame, resize, reward, cheer, stopFeed, sweep, renderer, beads, fly, view, applyView,
     enter() { patience = 0.05; },     // a sum is running: the beads cannot wait to be reached
     leave() { patience = 0.45; },     // it stays at the soroban, and now has time to hit every bead
   };

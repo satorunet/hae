@@ -4,11 +4,11 @@
 // beam and four one-beads below, and a bead counts when it is against the beam. Everything on screen is
 // read out of the brain in the worker - which bead rings are firing is what moves a bead - and nothing
 // on this page does any arithmetic.
-import { makeStage } from './stage.js?v=29';
+import { makeStage } from './stage.js?v=31';
 import { Sound } from '../juku/sound.js';
 
 const $ = (id) => document.getElementById(id);
-const PAGE_V = 'v120 / stage29';        // shown on the page, so a stale file can be seen at a glance
+const PAGE_V = 'v126 / stage31';        // shown on the page, so a stale file can be seen at a glance
 addEventListener('error', (e) => { const s = $('say'); if (s) s.textContent = 'エラー: ' + (e.message || e.type); });
 addEventListener('unhandledrejection', (e) => { const s = $('say'); if (s) s.textContent = 'エラー: ' + ((e.reason && e.reason.message) || e.reason); });
 const snd = new Sound();
@@ -253,7 +253,44 @@ function tape() {
   const left = a === null ? (entry || '0') : a;
   $('tape').textContent = op ? `${left} ${sym(op)} ${a === null ? '' : (entry || (b === null ? '' : b))}` : `${left}`;
 }
+/**
+ * 正解！ over the board: the word, and a handful of sparks thrown out of it. Purely decoration - the
+ * checking is done before this is called.
+ */
+let tadaOff = 0;
+function tada() {
+  try {
+    const el = $('tada');
+    if (!el || !document.createElement) return;
+    el.innerHTML = '<b>正解！</b>';
+    for (let i = 0; i < 16; i++) {
+      const sp = document.createElement('i');
+      const a = (i / 16) * Math.PI * 2 + Math.random() * 0.4, d = 80 + Math.random() * 130;
+      sp.style.setProperty('--dx', `${(Math.cos(a) * d).toFixed(0)}px`);
+      sp.style.setProperty('--dy', `${(Math.sin(a) * d * 0.72).toFixed(0)}px`);
+      sp.style.setProperty('--s', (0.5 + Math.random() * 1.3).toFixed(2));
+      sp.style.animationDelay = (Math.random() * 0.2).toFixed(2) + 's';
+      el.appendChild(sp);
+    }
+    el.hidden = false;
+    clearTimeout(tadaOff);
+    tadaOff = setTimeout(() => { el.hidden = true; el.innerHTML = ''; }, 1700);
+  } catch (err) { /* no DOM to sparkle in */ }
+}
+function untada() { try { const el = $('tada'); if (el) { el.hidden = true; el.innerHTML = ''; } } catch (err) {} }
+
+/** The key that was pressed lights up, whether it was tapped or typed. */
+function flash(k) {
+  if (!document.querySelector) return;
+  const b = document.querySelector(`#pad button[data-k="${k}"]`);
+  if (!b) return;
+  b.classList.add('hit');
+  clearTimeout(b.dim);
+  b.dim = setTimeout(() => b.classList.remove('hit'), 110);
+}
 function key(k) {
+  flash(k);
+  untada();
   result = null;
   // a key while it is drinking: the feeder goes back where it came from, half-served or not, so the
   // fly is free to use its legs again
@@ -377,13 +414,14 @@ function screen(now) {
     }
     if (m.type === 'done') {
       running = false; document.body.classList.remove('running');
-      if (stage) stage.leave();
+      if (stage) { stage.leave(); stage.cheer(); }      // both forelegs up: the sum is in
       // the bell and the honey wait a moment: the beads are still sliding when the machine is done,
       // and the reward is for the board agreeing with it, not for the machine alone
-      check = { answer: m.answer, at: performance.now() + 1200 };
       const aWas = a, bWas = b, opWas = op;
       const t = op === '*' ? a * b : op === '-' ? a - b : a + b;
       const mod = ((t % 1e8) + 1e8) % 1e8;
+      // what the sum actually comes to, to check the fly against
+      check = { answer: m.answer, want: String(mod).padStart(DIG, '0'), at: performance.now() + 1200 };
       // 3 rods, so anything past 999 runs off the top and anything below 0 comes round from 999
       const over = t !== mod
         ? `<span class="note">${t < 0 ? '0 を下回ったので 99999999 から戻っています' : '9 桁目は入りません（8 桁の機械なので、上の桁はあふれます）'}</span>　`
@@ -399,11 +437,17 @@ function screen(now) {
   const board = (stage ? stage.read() : value).slice(0, DIG).reverse().join('');
   $('num').textContent = board;
   if (check && performance.now() >= check.at) {
-    const right = board === check.answer;
+    // right means both: the beads say what the machine says, and that is what the sum comes to
+    const right = board === check.answer && check.answer === check.want;
+    if (!right && check.answer !== check.want) {
+      $('say').innerHTML += '　<span class="note">検算と合いません</span>';
+    }
     if (right) {
       snd.note(1318, 0, 0.5, 'triangle', 0.26);          // ピンポーン
       snd.note(1046, 0.19, 0.75, 'triangle', 0.24);
       snd.note(2637, 0, 0.35, 'sine', 0.06);
+      snd.note(3136, 0.34, 0.5, 'sine', 0.05);            // and a sparkle on top
+      tada();
       if (stage) stage.reward();                          // and a drop of honey
     }
     check = null;

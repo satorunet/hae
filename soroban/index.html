@@ -89,14 +89,41 @@
     animation:soroin .45s ease-out}
   #stage{display:block;width:100%;aspect-ratio:16/10}
   @keyframes soroin{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+  /* 正解！ - over the board, with a handful of sparks */
+  /* z-index matters: the WebGL canvas is composited, and without it the word paints underneath */
+  #tada{position:absolute;inset:0;z-index:2;pointer-events:none;display:grid;place-items:center}
+  /* the word is visible on its own: the animations only pop it in and fade it out, so if they never
+     run (reduced motion, a throttled tab) it still simply shows until the script takes it away */
+  #tada b{font-size:clamp(28px,7vw,54px);font-weight:800;letter-spacing:.06em;color:#fff;opacity:1;
+    text-shadow:0 0 18px rgba(84,217,140,.9),0 0 46px rgba(84,217,140,.55),0 2px 0 #0a3f24;
+    animation:tadapop .5s cubic-bezier(.2,1.6,.35,1), tadaout .4s ease 1.28s forwards}
+  #tada i{position:absolute;width:10px;height:10px;border-radius:50%;background:#fff;
+    box-shadow:0 0 10px 3px rgba(255,214,120,.9);animation:spark 1.25s ease-out forwards}
+  @keyframes tadapop{
+    0%{opacity:0;transform:scale(.4) rotate(-6deg)}
+    55%{opacity:1;transform:scale(1.14) rotate(2deg)}
+    100%{opacity:1;transform:scale(1) rotate(0)}}
+  @keyframes tadaout{from{opacity:1}to{opacity:0;transform:scale(1.05) translateY(-10px)}}
+  @keyframes spark{
+    0%{opacity:0;transform:translate(0,0) scale(.3)}
+    12%{opacity:1}
+    100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(var(--s))}}
+  /* no motion wanted: the word simply stands there (a fast animation would end on its own last
+     keyframe, which is invisible), and the sparks are dropped */
+  @media (prefers-reduced-motion:reduce){ #tada b{animation:none;opacity:1} #tada i{display:none} }
   .loopline{font-size:.66rem;color:var(--dim);text-align:left;margin:2px 0 0}
   .say{margin:9px 0 2px;font-size:.82rem;min-height:2.4em;color:var(--ink)}
   .say b{color:var(--ok);font-size:1.1em}
   .pad{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:8px}
   .pad button{font:600 1.1rem/1 ui-monospace,Menlo,monospace;padding:12px 0;border-radius:10px;cursor:pointer;
     background:var(--card2);color:var(--ink);border:1px solid var(--line);touch-action:manipulation;
+    transition:background .3s ease,color .3s ease,box-shadow .3s ease;
     -webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
   .pad button:active{background:#1b232c}
+  .pad button.hit{background:#25313d;color:#fff;box-shadow:0 0 0 1px var(--ok),0 0 18px rgba(89,183,255,.5);transition-duration:0s}
+  .pad button.op.hit{box-shadow:0 0 0 1px var(--warm),0 0 18px rgba(255,180,84,.5)}
+  .pad button.c.hit{box-shadow:0 0 0 1px var(--bad),0 0 18px rgba(255,123,123,.5)}
+  .pad button.eq.hit{background:#9ad5ff;box-shadow:0 0 0 1px #fff,0 0 22px rgba(89,183,255,.85)}
   .pad button.op{color:var(--warm)} .pad button.eq{color:#06121c;background:var(--ok);border-color:var(--ok)}
   .pad button.c{color:var(--bad)}
   body.running .pad button{opacity:.4;pointer-events:none}
@@ -144,7 +171,7 @@
     <div class="num" id="num">00000000</div>
   </div>
 
-  <div class="stagewrap" id="stagewrap"><canvas id="stage"></canvas></div>
+  <div class="stagewrap" id="stagewrap"><canvas id="stage"></canvas><div id="tada" hidden></div></div>
   <div class="loopline" id="loopline" hidden>いちばん左の棒は<strong>かけ算の残り回数</strong> — 残り <b id="loopn">0</b></div>
 
   <div class="say" id="say">そろばん脳を読み込んでいます…</div>
@@ -458,13 +485,13 @@
   // Browsers hold on to this file, so a new version of the page can sit unseen behind an old one.
   // This asks the server for it once, and if what comes back is newer than what is running, reloads.
   (function () {
-    const mine = 120;
+    const mine = 126;
     fetch(location.pathname, { cache: 'reload' }).then((r) => r.text()).then((t) => {
       const m = t.match(/app\.js\?v=(\d+)/);
       if (m && +m[1] > mine) location.replace(location.pathname + '?v=' + m[1]);
     }).catch(() => {});
   })();
 </script>
-<script type="module" src="./app.js?v=120"></script>
+<script type="module" src="./app.js?v=126"></script>
 </body>
 </html>
