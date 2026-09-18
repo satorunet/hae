@@ -22,7 +22,13 @@ const arg = Object.fromEntries(process.argv.slice(2).map((a) => a.split('=')));
 const SEEDS = +(arg.seeds || 12);
 
 const realFetch = globalThis.fetch;
-globalThis.fetch = async (u) => { const url = new URL(u); return url.protocol === 'file:' ? new Response(await readFile(url)) : realFetch(u); };
+const ALLOWED_DIRS = [HERE, DATA, new URL('../flybrain/', import.meta.url)];
+globalThis.fetch = async (u) => {
+  const url = new URL(u);
+  if (url.protocol !== 'file:') return realFetch(u);
+  if (!ALLOWED_DIRS.some((d) => url.pathname.startsWith(d.pathname))) throw new Error(`refusing to fetch file outside allowed dirs: ${url}`);
+  return new Response(await readFile(url));
+};
 const WASM = new URL('../flybrain/flybrain.wasm', HERE);
 
 const IDX = JSON.parse(await readFile(new URL('talk783.json', DATA), 'utf8'));
